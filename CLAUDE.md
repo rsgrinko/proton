@@ -10,7 +10,8 @@
 зависимости**, из которого поднимается обычное веб-приложение: маршрутизация, ORM
 (Active Record), миграции, авторизация с ролями и правами, готовая панель управления,
 API с ключами, очередь задач с воркером и расписанием, почта, вебхуки, уведомления,
-кэш, события, загрузка файлов, консоль с генераторами и свой тестраннер.
+резервные копии, настройки через панель, кэш, события, загрузка файлов, консоль
+с генераторами и свой тестраннер.
 
 Поставляется в двух частях: `framework/` — ядро (его меняют редко), всё остальное в
 корне — готовый скелет приложения, который запускается сразу после установки.
@@ -71,6 +72,7 @@ framework/            ядро, namespace Rsgrinko\Proton\
                       SendMailJob
   Webhooks/           Webhooks (реестр событий и рассылка), DeliverWebhookJob
   Notifications/      Notification, Notify, уведомления ядра
+  Backup/             копии базы: создание, проверка, ротация, восстановление
   Install/            Installer — общий движок установки для консоли и веба
   Cache/  Events/  Files/  RateLimit/  View/  Console/
 
@@ -79,7 +81,7 @@ app/                  код приложения, namespace App\
   Models/             свои модели (Note — демонстрационная)
   Jobs/               свои задачи очереди
 
-config/               config.php (читает .env), menu.php, permissions.php,
+config/               config.php (читает .env), menu.php, permissions.php, settings.php,
                       events.php, webhooks.php, schedule.php, commands.php
 routes/               web.php, admin.php, api.php
 resources/views/      шаблоны (layouts, auth, admin, notes, install, mail, errors)
@@ -87,8 +89,8 @@ migrations/           миграции: 20260912100000_create_core_tables.php
 stubs/                заготовки генераторов, stubs/crud/ — заготовки раздела целиком
 tests/                свой раннер (run.php) и тесты
 docs/                 документация: START, DATABASE, MIGRATIONS, ROUTING, ACCESS,
-                      QUEUE, MAIL, WEBHOOKS, NOTIFICATIONS, CONSOLE, TESTS, DEPLOY,
-                      STATUS (на чём остановились)
+                      QUEUE, MAIL, WEBHOOKS, NOTIFICATIONS, BACKUP, CONSOLE,
+                      TESTS, DEPLOY, STATUS (на чём остановились)
 public/index.php      единственная точка входа
 bin/proton            консольная утилита
 var/                  runtime: база SQLite, логи, кэш, загруженные файлы
@@ -158,6 +160,18 @@ action()`. Секреты в журнал не пишутся, `Audit::between()
 никогда не роняет вызвавший его код — сорвавшийся канал уходит в лог. Прочитанные
 старше `NOTIFICATIONS_KEEP_DAYS` убирает воркер, непрочитанные не трогает.
 
+**Настройки из панели** (`Support\Settings`) ложатся поверх `.env`: реестр в коде
+(свои — в `config/settings.php`), в базе только значения под префиксом `config:`.
+Сброс — это удаление значения из базы, иначе правка `.env` перестала бы что-то
+значить. Применяются один раз за процесс: `Settings::apply()` зовут ядро и консоль,
+воркеру правку подхватит перезапуск.
+
+**Копии базы** (`Backup`) — без внешних утилит: SQLite через `VACUUM INTO`, MySQL
+своим дампом на запросах, файл сразу сжимается и **проверяется** (негодный не
+сохраняется). Расписание включается `BACKUP_SCHEDULE`, ротацию держит `BACKUP_KEEP`.
+Восстановление — только из консоли с `--force`, и перед заменой делается
+страховочная копия текущего состояния.
+
 **Адрес для письма** — `Router::absolute('имя', [...])`: путь без домена в письме не
 кликается. Роутер поднимается сам и вне запроса (`Router::boot()`), иначе задача
 в воркере падала бы на «Неизвестный маршрут».
@@ -209,6 +223,9 @@ php bin/proton key:create|key:list|key:revoke
 php bin/proton mail:test <адрес>     пробное письмо
 php bin/proton webhook:list [--events]  подписки или реестр событий
 php bin/proton webhook:test <id>     пробная посылка подписчику
+php bin/proton backup:create          копия базы с проверкой
+php bin/proton backup:list [--check]  список копий
+php bin/proton backup:restore <файл> --force   восстановление (крайняя мера)
 php bin/proton status                самопроверка
 php bin/proton route:list|cache:clear|logs:purge|app:key|seed
 ```

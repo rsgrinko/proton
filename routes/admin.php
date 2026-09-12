@@ -11,6 +11,7 @@ declare(strict_types=1);
  */
 
 use App\Controllers\Admin\AuditController;
+use App\Controllers\Admin\BackupsController;
 use App\Controllers\Admin\DashboardController;
 use App\Controllers\Admin\LogsController;
 use App\Controllers\Admin\RolesController;
@@ -63,6 +64,16 @@ return static function (Router $router): void {
             $router->post('/{id:\d+}/toggle', [WebhooksController::class, 'toggle'])->name('admin.webhooks.toggle');
             $router->post('/{id:\d+}/secret', [WebhooksController::class, 'rotate'])->name('admin.webhooks.rotate');
             $router->post('/{id:\d+}/delete', [WebhooksController::class, 'delete'])->name('admin.webhooks.delete');
+        });
+
+        // Копии базы — под правом обслуживания: тот же человек перезапускает
+        // воркер и чистит очередь
+        $router->group(['prefix' => '/backups', 'middleware' => 'can:' . Permission::SYSTEM_MANAGE], function (Router $router): void {
+            $router->get('', [BackupsController::class, 'index'])->name('admin.backups');
+            $router->post('', [BackupsController::class, 'store'])->name('admin.backups.store');
+            $router->post('/download', [BackupsController::class, 'download'])->name('admin.backups.download');
+            $router->post('/check', [BackupsController::class, 'check'])->name('admin.backups.check');
+            $router->post('/delete', [BackupsController::class, 'delete'])->name('admin.backups.delete');
         });
 
         $router->group(['prefix' => '/settings', 'middleware' => 'can:' . Permission::SETTINGS_MANAGE], function (Router $router): void {

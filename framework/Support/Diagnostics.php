@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Rsgrinko\Proton\Support;
 
 use Rsgrinko\Proton\Auth\Crypto;
+use Rsgrinko\Proton\Backup\Backup;
 use Rsgrinko\Proton\Database\Connection;
 use Rsgrinko\Proton\Database\Migrator;
 use Rsgrinko\Proton\Files\Storage;
@@ -250,6 +251,7 @@ final class Diagnostics
         ];
 
         $checks[] = self::webhooks();
+        $checks[] = self::backups();
 
         return $checks;
     }
@@ -278,6 +280,40 @@ final class Diagnostics
             );
         } catch (Throwable $e) {
             return ['level' => self::WARN, 'title' => 'Вебхуки', 'value' => $e->getMessage(), 'hint' => ''];
+        }
+    }
+
+    /**
+     * Копии базы: есть ли они вообще и давно ли делались.
+     *
+     * @return array{level: string, title: string, value: string, hint: string}
+     */
+    private static function backups(): array
+    {
+        try {
+            $files = Backup::files();
+
+            if ($files === []) {
+                return [
+                    'level' => self::WARN,
+                    'title' => 'Копии базы',
+                    'value' => 'копий нет',
+                    'hint'  => 'Сделайте: php bin/proton backup:create, и задайте BACKUP_SCHEDULE',
+                ];
+            }
+
+            $last = strtotime($files[0]['created']) ?: 0;
+            $days = (int) floor((time() - $last) / 86400);
+
+            return self::check(
+                $days <= 2,
+                'Копии базы',
+                count($files) . ', свежая от ' . date('d.m.Y H:i', $last),
+                'Свежей копии нет уже ' . $days . ' дней — проверьте расписание и воркер',
+                self::WARN
+            );
+        } catch (Throwable $e) {
+            return ['level' => self::WARN, 'title' => 'Копии базы', 'value' => $e->getMessage(), 'hint' => ''];
         }
     }
 

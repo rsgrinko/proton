@@ -136,6 +136,15 @@ return [
         'queue'         => Env::string('WEBHOOKS_QUEUE', 'webhooks'),
     ],
 
+    'backup' => [
+        // Куда складывать копии базы
+        'path' => APP_ROOT . '/var/backups',
+        // Сколько копий держать: лишние удаляются после новой
+        'keep' => Env::int('BACKUP_KEEP', 7),
+        // Во сколько делать копию каждый день («03:30»); пусто — не делать
+        'schedule' => Env::string('BACKUP_SCHEDULE', ''),
+    ],
+
     'queue' => [
         'sleep'                => Env::int('QUEUE_SLEEP', 3),
         'worker_lifetime'      => Env::int('QUEUE_WORKER_LIFETIME', 3600),

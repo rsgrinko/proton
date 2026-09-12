@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Rsgrinko\Proton\Queue;
 
+use Rsgrinko\Proton\Backup\BackupJob;
 use Rsgrinko\Proton\Models\Setting;
+use Rsgrinko\Proton\Support\Config;
 use Rsgrinko\Proton\Support\Logger;
 use Throwable;
 
@@ -149,10 +151,28 @@ final class Scheduler
 
         self::$booted = true;
 
+        self::core();
+
         $file = APP_ROOT . '/config/schedule.php';
 
         if (is_file($file)) {
             require $file;
+        }
+    }
+
+    /**
+     * Задачи ядра. Объявляются до файла приложения, чтобы приложение могло
+     * переопределить любую из них своей — задача с тем же именем заменяет.
+     */
+    private static function core(): void
+    {
+        $at = trim((string) Config::get('backup.schedule', ''));
+
+        // Копия базы делается, только если для неё задано время
+        if ($at !== '') {
+            self::dailyAt($at, 'backup:database', static function (): void {
+                Queue::push(BackupJob::class);
+            });
         }
     }
 }

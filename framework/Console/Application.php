@@ -39,7 +39,7 @@ final class Application
             Commands\ServeCommand::class,
             Commands\TestCommand::class,
             Commands\MakeCrudCommand::class,
-        Commands\MakeModelCommand::class,
+            Commands\MakeModelCommand::class,
             Commands\MakeControllerCommand::class,
             Commands\MakeMigrationCommand::class,
             Commands\MakeJobCommand::class,
@@ -66,6 +66,11 @@ final class Application
         ],
         'Почта' => [
             Commands\MailTestCommand::class,
+        ],
+        'Резервные копии' => [
+            Commands\BackupCreateCommand::class,
+            Commands\BackupListCommand::class,
+            Commands\BackupRestoreCommand::class,
         ],
         'Вебхуки' => [
             Commands\WebhookListCommand::class,

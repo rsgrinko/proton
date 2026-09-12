@@ -174,7 +174,7 @@ test('http: все страницы администратора отвечаю�
         '/admin/roles', '/admin/roles/new', '/admin/roles/' . (Role::admin()?->id() ?? 1),
         '/admin/tokens', '/admin/audit', '/admin/logs', '/admin/system',
         '/admin/webhooks', '/admin/webhooks/new', '/admin/webhooks/' . httpWebhook()->id(),
-        '/admin/settings',
+        '/admin/settings', '/admin/backups',
     ];
 
     foreach ($paths as $path) {
@@ -186,6 +186,7 @@ test('http: обычный пользователь не попадает в с�
     $closed = [
         '/admin', '/admin/users', '/admin/roles', '/admin/tokens',
         '/admin/audit', '/admin/logs', '/admin/system', '/admin/webhooks', '/admin/settings',
+        '/admin/backups',
     ];
 
     foreach ($closed as $path) {
