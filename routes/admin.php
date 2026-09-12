@@ -17,6 +17,7 @@ use App\Controllers\Admin\RolesController;
 use App\Controllers\Admin\SystemController;
 use App\Controllers\Admin\TokensController;
 use App\Controllers\Admin\UsersController;
+use App\Controllers\Admin\WebhooksController;
 use Rsgrinko\Proton\Access\Permission;
 use Rsgrinko\Proton\Http\Router;
 
@@ -49,6 +50,18 @@ return static function (Router $router): void {
             $router->post('', [TokensController::class, 'store'])->name('admin.tokens.store');
             $router->post('/{id:\d+}/revoke', [TokensController::class, 'revoke'])->name('admin.tokens.revoke');
             $router->post('/{id:\d+}/delete', [TokensController::class, 'delete'])->name('admin.tokens.delete');
+        });
+
+        $router->group(['prefix' => '/webhooks', 'middleware' => 'can:' . Permission::WEBHOOKS_MANAGE], function (Router $router): void {
+            $router->get('', [WebhooksController::class, 'index'])->name('admin.webhooks');
+            $router->get('/new', [WebhooksController::class, 'create'])->name('admin.webhooks.create');
+            $router->post('/new', [WebhooksController::class, 'store']);
+            $router->get('/{id:\d+}', [WebhooksController::class, 'show'])->name('admin.webhooks.show');
+            $router->post('/{id:\d+}', [WebhooksController::class, 'update']);
+            $router->post('/{id:\d+}/test', [WebhooksController::class, 'test'])->name('admin.webhooks.test');
+            $router->post('/{id:\d+}/toggle', [WebhooksController::class, 'toggle'])->name('admin.webhooks.toggle');
+            $router->post('/{id:\d+}/secret', [WebhooksController::class, 'rotate'])->name('admin.webhooks.rotate');
+            $router->post('/{id:\d+}/delete', [WebhooksController::class, 'delete'])->name('admin.webhooks.delete');
         });
 
         $router->get('/audit', [AuditController::class, 'index'])

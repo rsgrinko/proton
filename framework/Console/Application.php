@@ -66,6 +66,10 @@ final class Application
         'Почта' => [
             Commands\MailTestCommand::class,
         ],
+        'Вебхуки' => [
+            Commands\WebhookListCommand::class,
+            Commands\WebhookTestCommand::class,
+        ],
     ];
 
     /** @var array<int, string> Позиционные аргументы */

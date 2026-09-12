@@ -19,6 +19,8 @@ use Rsgrinko\Proton\Http\Response;
 use Rsgrinko\Proton\Models\ApiToken;
 use Rsgrinko\Proton\Models\Role;
 use Rsgrinko\Proton\Models\User;
+use Rsgrinko\Proton\Models\Webhook;
+use Rsgrinko\Proton\Models\WebhookDelivery;
 
 /**
  * Запрос к ядру от лица пользователя (или гостя, если его нет).
@@ -94,6 +96,27 @@ function httpUser(): User
     return $user;
 }
 
+/**
+ * Подписка на события для обхода страниц панели.
+ */
+function httpWebhook(): Webhook
+{
+    static $webhook = null;
+
+    if ($webhook instanceof Webhook) {
+        return $webhook;
+    }
+
+    $webhook = Webhook::add('Подписка для обхода', 'https://example.com/hook', [Webhook::ALL_EVENTS]);
+
+    afterTests(static function () use ($webhook): void {
+        WebhookDelivery::query()->where('webhook_id', $webhook->id())->delete();
+        $webhook->delete();
+    });
+
+    return $webhook;
+}
+
 test('http: гостя уводит на вход, а не показывает страницу', function (): void {
     // Пользователь в базе нужен: пока их нет, всё уводит на первый запуск
     httpAdmin();
@@ -148,6 +171,7 @@ test('http: все страницы администратора отвечаю�
         '/admin', '/admin/users', '/admin/users/new', '/admin/users/' . httpAdmin()->id(),
         '/admin/roles', '/admin/roles/new', '/admin/roles/' . (Role::admin()?->id() ?? 1),
         '/admin/tokens', '/admin/audit', '/admin/logs', '/admin/system',
+        '/admin/webhooks', '/admin/webhooks/new', '/admin/webhooks/' . httpWebhook()->id(),
     ];
 
     foreach ($paths as $path) {
@@ -156,7 +180,12 @@ test('http: все страницы администратора отвечаю�
 });
 
 test('http: обычный пользователь не попадает в служебные разделы', function (): void {
-    foreach (['/admin', '/admin/users', '/admin/roles', '/admin/tokens', '/admin/audit', '/admin/logs', '/admin/system'] as $path) {
+    $closed = [
+        '/admin', '/admin/users', '/admin/roles', '/admin/tokens',
+        '/admin/audit', '/admin/logs', '/admin/system', '/admin/webhooks',
+    ];
+
+    foreach ($closed as $path) {
         assertStatus(403, httpRequest('GET', $path, httpUser()), 'закрытая страница ' . $path);
     }
 
@@ -213,6 +242,49 @@ test('http: неверные данные возвращают человека 
 
     assertStatus(302, $response, 'без обязательного поля запись не создаётся');
     assertSame(0, Note::query()->where('title', '')->count());
+});
+
+test('http: подписка на события заводится и проверяется из панели', function (): void {
+    $response = httpRequest('POST', '/admin/webhooks/new', httpAdmin(), [
+        'name'     => 'Через форму',
+        'url'      => 'https://example.com/hooks/proton',
+        'events'   => ['user.login'],
+        'secret'   => 'секрет-из-формы',
+    ]);
+
+    assertStatus(302, $response);
+
+    /** @var Webhook $webhook */
+    $webhook = assertNotNull(Webhook::query()->where('name', 'Через форму')->first());
+
+    assertSame('секрет-из-формы', $webhook->secret());
+    assertSame(['user.login'], $webhook->events());
+
+    // Пробная посылка только встаёт в очередь — в сеть тесты не ходят
+    assertStatus(302, httpRequest('POST', '/admin/webhooks/' . $webhook->id() . '/test', httpAdmin()));
+
+    $delivery = assertNotNull(
+        WebhookDelivery::query()->where('webhook_id', $webhook->id())->orderBy('id', 'desc')->first()
+    );
+
+    assertSame(WebhookDelivery::PENDING, (string) $delivery->raw('status'));
+
+    // Событие без подписчиков посылок не создаёт, с подписчиком — создаёт
+    Rsgrinko\Proton\Webhooks\Webhooks::dispatch('user.logout', ['login' => 'кто-то']);
+
+    assertSame(1, WebhookDelivery::query()->where('webhook_id', $webhook->id())->count(), 'чужое событие не уехало');
+
+    Rsgrinko\Proton\Webhooks\Webhooks::dispatch('user.login', ['login' => 'кто-то']);
+
+    assertSame(2, WebhookDelivery::query()->where('webhook_id', $webhook->id())->count());
+
+    // Отключение и удаление — тоже из панели
+    assertStatus(302, httpRequest('POST', '/admin/webhooks/' . $webhook->id() . '/toggle', httpAdmin()));
+    assertFalse((bool) assertNotNull(Webhook::find($webhook->id()))->active);
+
+    assertStatus(302, httpRequest('POST', '/admin/webhooks/' . $webhook->id() . '/delete', httpAdmin()));
+    assertNull(Webhook::find($webhook->id()));
+    assertSame(0, WebhookDelivery::query()->where('webhook_id', $webhook->id())->count(), 'журнал ушёл вместе с подпиской');
 });
 
 test('http: неизвестный адрес — 404', function (): void {

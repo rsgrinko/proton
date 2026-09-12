@@ -10,6 +10,8 @@ use Rsgrinko\Proton\Database\Migrator;
 use Rsgrinko\Proton\Files\Storage;
 use Rsgrinko\Proton\Models\Setting;
 use Rsgrinko\Proton\Models\User;
+use Rsgrinko\Proton\Models\Webhook;
+use Rsgrinko\Proton\Models\WebhookDelivery;
 use Rsgrinko\Proton\Queue\Queue;
 use Throwable;
 
@@ -247,7 +249,36 @@ final class Diagnostics
             'hint'  => '',
         ];
 
+        $checks[] = self::webhooks();
+
         return $checks;
+    }
+
+    /**
+     * Подписки на события: сколько их и нет ли недоставленных посылок.
+     *
+     * @return array{level: string, title: string, value: string, hint: string}
+     */
+    private static function webhooks(): array
+    {
+        try {
+            if (!Connection::instance()->hasTable('webhooks')) {
+                return ['level' => self::OK, 'title' => 'Вебхуки', 'value' => 'таблиц нет', 'hint' => ''];
+            }
+
+            $active = Webhook::query()->where('active', 1)->count();
+            $failed = (int) (WebhookDelivery::stats()[WebhookDelivery::FAILED] ?? 0);
+
+            return self::check(
+                $failed === 0,
+                'Вебхуки',
+                'подписок ' . $active . ', не доставлено ' . $failed,
+                'Посмотрите журнал доставок: кто-то из подписчиков не отвечает',
+                self::WARN
+            );
+        } catch (Throwable $e) {
+            return ['level' => self::WARN, 'title' => 'Вебхуки', 'value' => $e->getMessage(), 'hint' => ''];
+        }
     }
 
     /**

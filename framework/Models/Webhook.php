@@ -94,7 +94,8 @@ final class Webhook extends Model
      */
     public function events(): array
     {
-        $events = $this->events;
+        // Читаем raw, а не через приведение: у новой подписки колонки ещё нет
+        $events = json_decode((string) $this->raw('events'), true);
 
         return is_array($events) ? array_map(static fn (mixed $event): string => (string) $event, $events) : [];
     }
