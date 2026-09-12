@@ -10,7 +10,7 @@ use Rsgrinko\Proton\Models\WebhookDelivery;
 use Rsgrinko\Proton\Webhooks\Webhooks;
 
 /**
- * список подписок на события.
+ * список вебхуков.
  */
 final class WebhookListCommand extends Command
 {
@@ -21,7 +21,7 @@ final class WebhookListCommand extends Command
 
     public function description(): string
     {
-        return 'список подписок на события и состояние посылок';
+        return 'список вебхуков и состояние посылок';
     }
 
     public function usage(): string
@@ -39,7 +39,7 @@ final class WebhookListCommand extends Command
         $webhooks = Webhook::query()->orderBy('id')->get();
 
         if ($webhooks === []) {
-            $this->line('Подписок нет. Завести: раздел «Вебхуки» в панели');
+            $this->line('Вебхуков нет. Завести: раздел «Вебхуки» в панели');
 
             return 0;
         }

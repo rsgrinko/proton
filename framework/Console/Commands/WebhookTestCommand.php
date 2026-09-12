@@ -23,7 +23,7 @@ final class WebhookTestCommand extends Command
 
     public function description(): string
     {
-        return 'отправить подписке пробную посылку';
+        return 'отправить вебхуку пробную посылку';
     }
 
     public function usage(): string
@@ -36,7 +36,7 @@ final class WebhookTestCommand extends Command
         $id = (int) $this->arg(0);
 
         if ($id <= 0) {
-            $this->fail('Укажите номер подписки: webhook:test 1 (список — webhook:list)');
+            $this->fail('Укажите номер вебхука: webhook:test 1 (список — webhook:list)');
 
             return 1;
         }
@@ -44,7 +44,7 @@ final class WebhookTestCommand extends Command
         $webhook = Webhook::find($id);
 
         if ($webhook === null) {
-            $this->fail('Подписка ' . $id . ' не найдена');
+            $this->fail('Вебхук ' . $id . ' не найден');
 
             return 1;
         }

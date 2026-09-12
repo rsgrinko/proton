@@ -159,8 +159,11 @@ $unread = $viewer->isGuest() ? 0 : UserNotification::unreadFor($viewer->id());
         .badge.info { background: var(--info-bg); color: var(--accent); }
         .badge.muted { background: var(--border); color: var(--muted); }
 
-        input[type=text], input[type=email], input[type=number], input[type=password],
-        input[type=date], input[type=datetime-local], input[type=search], select, textarea {
+        /* Перечислять типы полей по одному — значит рано или поздно забыть
+           очередной (так поле type=url осталось без рамки): стилизуем всё,
+           кроме того, что рисуется само — галочек, кнопок и выбора файла */
+        input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=hidden]):not([type=submit]):not([type=button]):not([type=reset]):not([type=range]):not([type=color]),
+        select, textarea {
             width: 100%;
             padding: 8px 10px;
             border: 1px solid var(--border);

@@ -8,10 +8,10 @@ use Rsgrinko\Proton\Http\Router;
 use Rsgrinko\Proton\Models\Webhook;
 
 /**
- * Подписка на события отключилась сама: подписчик не отвечал слишком долго.
+ * Вебхук отключился сам: подписчик не отвечал слишком долго.
  *
  * Уходит тем, кто отвечает за вебхуки (право webhooks.manage), и письмом тоже:
- * молча отключённая подписка — это тихо потерянные события, о таком нужно
+ * молча отключённый вебхук — это тихо потерянные события, о таком нужно
  * узнавать сразу, а не из журнала через неделю.
  */
 final class WebhookDisabledNotification extends Notification
@@ -27,20 +27,20 @@ final class WebhookDisabledNotification extends Notification
 
     public function title(): string
     {
-        return 'Подписка «' . (string) $this->webhook->name . '» отключена';
+        return 'Вебхук «' . (string) $this->webhook->name . '» отключён';
     }
 
     public function body(): string
     {
         $text = 'Подписчик ' . (string) $this->webhook->url . ' не отвечает, неудач подряд — '
-            . (int) $this->webhook->raw('failures') . '. Подписка отключена, события ему '
+            . (int) $this->webhook->raw('failures') . '. Вебхук отключён, события ему '
             . 'больше не уходят.';
 
         if ($this->error !== '') {
             $text .= ' Последняя ошибка: ' . $this->error . '.';
         }
 
-        return $text . ' Починив подписчика, включите подписку обратно в разделе «Вебхуки».';
+        return $text . ' Починив подписчика, включите вебхук обратно в разделе «Вебхуки».';
     }
 
     public function url(): string

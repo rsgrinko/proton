@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 /**
- * Карточка подписки: адрес, события, секрет и журнал посылок.
+ * Карточка вебхука: адрес, события, секрет и журнал посылок.
  *
  * @var \Rsgrinko\Proton\Models\Webhook $webhook
  * @var array<string, array<string, string>> $groups события по разделам
@@ -20,7 +20,7 @@ $action   = $isNew ? View::route('admin.webhooks.create') : View::route('admin.w
 $selected = $webhook->events();
 $all      = in_array(Webhook::ALL_EVENTS, $selected, true);
 ?>
-<h1><?= $isNew ? 'Новая подписка' : View::e((string) $webhook->name) ?></h1>
+<h1><?= $isNew ? 'Новый вебхук' : View::e((string) $webhook->name) ?></h1>
 
 <?php if ($fresh !== '') { ?>
     <div class="card" style="border-color: var(--accent);">
@@ -93,9 +93,9 @@ $all      = in_array(Webhook::ALL_EVENTS, $selected, true);
                 <th>Состояние</th>
                 <td>
                     <?php if ((bool) $webhook->active) { ?>
-                        <span class="badge ok">включена</span>
+                        <span class="badge ok">включён</span>
                     <?php } else { ?>
-                        <span class="badge muted">отключена</span>
+                        <span class="badge muted">отключён</span>
                     <?php } ?>
                 </td>
             </tr>
@@ -138,7 +138,7 @@ $all      = in_array(Webhook::ALL_EVENTS, $selected, true);
 
             <form method="post" action="<?= View::e(View::route('admin.webhooks.delete', ['id' => $webhook->id()])) ?>">
                 <?= View::csrf() ?>
-                <button type="submit" class="danger">Удалить подписку</button>
+                <button type="submit" class="danger">Удалить вебхук</button>
             </form>
         </div>
     </div>

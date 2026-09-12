@@ -14,9 +14,9 @@ use Rsgrinko\Proton\View\View;
 use Rsgrinko\Proton\Webhooks\Webhooks;
 
 /**
- * Подписки на события: куда стучаться, о чём и с каким секретом.
+ * Вебхуки: куда стучаться, о чём и с каким секретом.
  *
- * Секрет виден владельцу подписки всегда — им подписчик проверяет посылки,
+ * Секрет виден владельцу вебхука всегда — им подписчик проверяет посылки,
  * и подсмотреть его больше негде. Заменить секрет можно, и старый перестаёт
  * подходить сразу.
  */
@@ -40,7 +40,7 @@ final class WebhooksController extends Controller
             'groups'     => Webhooks::groups(),
             'deliveries' => ['items' => [], 'total' => 0, 'page' => 1, 'pages' => 1, 'per_page' => 0],
             'fresh'      => '',
-        ], 'Новая подписка');
+        ], 'Новый вебхук');
     }
 
     public function store(Request $request): Response
@@ -66,9 +66,9 @@ final class WebhooksController extends Controller
             (string) ($data['secret'] ?? '')
         );
 
-        Audit::created('webhook', $webhook->id(), 'подписка «' . (string) $webhook->name . '» на ' . (string) $webhook->url);
+        Audit::created('webhook', $webhook->id(), 'вебхук «' . (string) $webhook->name . '» на ' . (string) $webhook->url);
 
-        $this->flash('Подписка создана. Секрет пропишите у подписчика');
+        $this->flash('Вебхук создан. Секрет пропишите у подписчика');
 
         return $this->redirect('admin.webhooks.show', ['id' => $webhook->id()]);
     }
@@ -119,19 +119,19 @@ final class WebhooksController extends Controller
             'events' => json_encode($events, JSON_UNESCAPED_UNICODE),
         ])->save();
 
-        Audit::updated('webhook', $webhook->id(), 'подписка «' . (string) $webhook->name . '»', Audit::between($before, [
+        Audit::updated('webhook', $webhook->id(), 'вебхук «' . (string) $webhook->name . '»', Audit::between($before, [
             'name'   => (string) $webhook->name,
             'url'    => (string) $webhook->url,
             'events' => implode(', ', $webhook->events()),
         ]));
 
-        $this->flash('Подписка сохранена');
+        $this->flash('Вебхук сохранён');
 
         return $this->redirect('admin.webhooks.show', ['id' => $webhook->id()]);
     }
 
     /**
-     * Включить или отключить подписку.
+     * Включить или отключить вебхук.
      */
     public function toggle(int $id): Response
     {
@@ -142,9 +142,9 @@ final class WebhooksController extends Controller
         // Включили заново — счётчик неудач больше не повод отключать
         $webhook->forceFill(['active' => $active ? 1 : 0, 'failures' => 0])->save();
 
-        Audit::action('webhook', $webhook->id(), ($active ? 'включена' : 'отключена') . ' подписка «' . (string) $webhook->name . '»');
+        Audit::action('webhook', $webhook->id(), ($active ? 'включён' : 'отключён') . ' вебхук «' . (string) $webhook->name . '»');
 
-        $this->flash($active ? 'Подписка включена' : 'Подписка отключена');
+        $this->flash($active ? 'Вебхук включён' : 'Вебхук отключён');
 
         return $this->redirect('admin.webhooks.show', ['id' => $webhook->id()]);
     }
@@ -158,7 +158,7 @@ final class WebhooksController extends Controller
 
         View::stash('webhook_secret', $webhook->rotateSecret());
 
-        Audit::action('webhook', $webhook->id(), 'заменён секрет подписки «' . (string) $webhook->name . '»');
+        Audit::action('webhook', $webhook->id(), 'заменён секрет вебхука «' . (string) $webhook->name . '»');
 
         $this->flash('Секрет заменён. Пропишите новый у подписчика — старый больше не подойдёт');
 
@@ -174,7 +174,7 @@ final class WebhooksController extends Controller
 
         $delivery = Webhooks::test($webhook);
 
-        Audit::action('webhook', $webhook->id(), 'отправлена пробная посылка подписке «' . (string) $webhook->name . '»');
+        Audit::action('webhook', $webhook->id(), 'отправлена пробная посылка вебхуку «' . (string) $webhook->name . '»');
 
         $this->flash('Пробная посылка поставлена в очередь (№' . $delivery->id() . '). Её разберёт воркер');
 
@@ -187,14 +187,14 @@ final class WebhooksController extends Controller
 
         $name = (string) $webhook->name;
 
-        // Журнал доставок без подписки не нужен
+        // Журнал доставок без вебхука не нужен
         WebhookDelivery::query()->where('webhook_id', $webhook->id())->delete();
 
         $webhook->delete();
 
-        Audit::deleted('webhook', $id, 'удалена подписка «' . $name . '»');
+        Audit::deleted('webhook', $id, 'удалён вебхук «' . $name . '»');
 
-        $this->flash('Подписка удалена');
+        $this->flash('Вебхук удалён');
 
         return $this->redirect('admin.webhooks');
     }
@@ -202,7 +202,7 @@ final class WebhooksController extends Controller
     private function webhook(int $id): Webhook
     {
         /** @var Webhook $webhook */
-        $webhook = $this->require(Webhook::find($id), 'admin.webhooks', 'Подписка не найдена');
+        $webhook = $this->require(Webhook::find($id), 'admin.webhooks', 'Вебхук не найден');
 
         return $webhook;
     }

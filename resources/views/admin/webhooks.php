@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 /**
- * Подписки на события.
+ * Вебхуки: подписки на события приложения.
  *
  * @var array{items: array<int, \Rsgrinko\Proton\Models\Webhook>, total: int, page: int, pages: int, per_page: int} $page
  * @var array<string, array<string, string>> $groups события по разделам
@@ -24,7 +24,7 @@ foreach ($groups as $group) {
 
 <div class="card">
     <p class="muted small">
-        Подписка получает событие приложения посылкой POST с подписью в заголовке
+        Вебхук получает событие приложения посылкой POST с подписью в заголовке
         <span class="mono">X-Proton-Signature</span>. Отправляет их воркер: упавшую посылку
         он повторит, а подписчик, молчащий слишком долго, отключится сам.
         Событий в реестре: <?= $events ?>.
@@ -37,15 +37,15 @@ foreach ($groups as $group) {
     </p>
 
     <div class="row">
-        <a class="btn primary" href="<?= View::e(View::route('admin.webhooks.create')) ?>">Новая подписка</a>
+        <a class="btn primary" href="<?= View::e(View::route('admin.webhooks.create')) ?>">Новый вебхук</a>
     </div>
 </div>
 
 <div class="card">
-    <h2>Подписки</h2>
+    <h2>Список</h2>
 
     <?php if ($page['items'] === []) { ?>
-        <p class="muted">Подписок пока нет.</p>
+        <p class="muted">Вебхуков пока нет.</p>
     <?php } else { ?>
         <div class="table-wrap">
             <table class="list">
@@ -75,9 +75,9 @@ foreach ($groups as $group) {
                         </td>
                         <td>
                             <?php if ((bool) $webhook->active) { ?>
-                                <span class="badge ok">включена</span>
+                                <span class="badge ok">включён</span>
                             <?php } else { ?>
-                                <span class="badge muted">отключена</span>
+                                <span class="badge muted">отключён</span>
                             <?php } ?>
                         </td>
                         <td class="hide-sm muted small">
