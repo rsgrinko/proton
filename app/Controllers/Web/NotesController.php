@@ -7,6 +7,7 @@ namespace App\Controllers\Web;
 use App\Models\Note;
 use Rsgrinko\Proton\Access\Scope;
 use Rsgrinko\Proton\Access\Viewer;
+use Rsgrinko\Proton\Events\Events;
 use Rsgrinko\Proton\Files\Storage;
 use Rsgrinko\Proton\Http\Controller;
 use Rsgrinko\Proton\Http\Request;
@@ -71,6 +72,9 @@ final class NotesController extends Controller
 
         Audit::created('note', $note->id(), 'заметка «' . (string) $note->title . '»');
 
+        // Событие уходит подписчикам вебхуков — список в config/webhooks.php
+        Events::fire('note.created', ['note' => $note]);
+
         $this->flash('Заметка сохранена');
 
         return $this->redirect('notes.show', ['id' => $note->id()]);
@@ -119,6 +123,8 @@ final class NotesController extends Controller
             'pinned' => $note->raw('pinned'),
         ]));
 
+        Events::fire('note.updated', ['note' => $note]);
+
         $this->flash('Заметка сохранена');
 
         return $this->redirect('notes.show', ['id' => $note->id()]);
@@ -132,6 +138,8 @@ final class NotesController extends Controller
         $note->delete();
 
         Audit::deleted('note', $note->id(), 'заметка «' . (string) $note->title . '»');
+
+        Events::fire('note.deleted', ['note' => $note]);
 
         $this->flash('Заметка удалена');
 

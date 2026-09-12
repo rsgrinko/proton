@@ -7,6 +7,7 @@ namespace Rsgrinko\Proton\Mail\Drivers;
 use Rsgrinko\Proton\Mail\Message;
 use Rsgrinko\Proton\Mail\Mime;
 use Rsgrinko\Proton\Support\Config;
+use Rsgrinko\Proton\Support\HttpClient;
 use Rsgrinko\Proton\Support\ProtonException;
 
 /**
@@ -114,13 +115,23 @@ final class SmtpDriver implements DriverInterface
 
         $address = ($encryption === 'ssl' ? 'ssl://' : 'tcp://') . $host . ':' . $port;
 
-        $context = stream_context_create([
-            'ssl' => [
-                'verify_peer'       => (bool) Config::get('mail.smtp.verify_peer', true),
-                'verify_peer_name'  => (bool) Config::get('mail.smtp.verify_peer', true),
-                'allow_self_signed' => !(bool) Config::get('mail.smtp.verify_peer', true),
-            ],
-        ]);
+        $verify = (bool) Config::get('mail.smtp.verify_peer', true);
+
+        $ssl = [
+            'verify_peer'       => $verify,
+            'verify_peer_name'  => $verify,
+            'allow_self_signed' => !$verify,
+        ];
+
+        // У PHP может не быть своего хранилища корневых сертификатов —
+        // тогда путь к нему берём из настройки HTTP_CA_BUNDLE
+        $ca = HttpClient::caBundle();
+
+        if ($ca !== '') {
+            $ssl['cafile'] = $ca;
+        }
+
+        $context = stream_context_create(['ssl' => $ssl]);
 
         $socket = @stream_socket_client($address, $code, $error, $timeout, STREAM_CLIENT_CONNECT, $context);
 

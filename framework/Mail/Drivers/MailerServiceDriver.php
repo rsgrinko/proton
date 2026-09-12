@@ -6,6 +6,7 @@ namespace Rsgrinko\Proton\Mail\Drivers;
 
 use Rsgrinko\Proton\Mail\Message;
 use Rsgrinko\Proton\Support\Config;
+use Rsgrinko\Proton\Support\HttpClient;
 use Rsgrinko\Proton\Support\ProtonException;
 use Rsgrinko\Proton\Support\RequestId;
 
@@ -84,55 +85,10 @@ final class MailerServiceDriver implements DriverInterface
     {
         $timeout = max(2, (int) Config::get('mail.service.timeout', 10));
 
-        if (function_exists('curl_init')) {
-            $curl = curl_init($url);
-
-            curl_setopt_array($curl, [
-                CURLOPT_POST           => true,
-                CURLOPT_POSTFIELDS     => $body,
-                CURLOPT_HTTPHEADER     => $headers,
-                CURLOPT_RETURNTRANSFER => true,
-                CURLOPT_TIMEOUT        => $timeout,
-            ]);
-
-            $response = curl_exec($curl);
-            $status   = (int) curl_getinfo($curl, CURLINFO_RESPONSE_CODE);
-            $error    = curl_error($curl);
-
-            curl_close($curl);
-
-            if ($response === false) {
-                throw new ProtonException('Почтовый сервис недоступен: ' . $error);
-            }
-
-            return ['status' => $status, 'body' => (string) $response];
+        try {
+            return (new HttpClient($timeout))->post($url, $body, $headers);
+        } catch (ProtonException $e) {
+            throw new ProtonException('Почтовый сервис недоступен: ' . $e->getMessage());
         }
-
-        $context = stream_context_create([
-            'http' => [
-                'method'        => 'POST',
-                'header'        => implode("\r\n", $headers),
-                'content'       => $body,
-                'timeout'       => $timeout,
-                // Нужен ответ, а не исключение: код разбираем сами
-                'ignore_errors' => true,
-            ],
-        ]);
-
-        $response = @file_get_contents($url, false, $context);
-
-        if ($response === false) {
-            throw new ProtonException('Почтовый сервис недоступен: ' . $url);
-        }
-
-        $status = 0;
-
-        foreach ($http_response_header ?? [] as $header) {
-            if (preg_match('#^HTTP/\S+\s+(\d{3})#', $header, $matches) === 1) {
-                $status = (int) $matches[1];
-            }
-        }
-
-        return ['status' => $status, 'body' => $response];
     }
 }

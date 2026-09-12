@@ -9,6 +9,7 @@ use Rsgrinko\Proton\Models\AuditEntry;
 use Rsgrinko\Proton\Models\RememberToken;
 use Rsgrinko\Proton\Models\Setting;
 use Rsgrinko\Proton\Models\UserSession;
+use Rsgrinko\Proton\Models\WebhookDelivery;
 use Rsgrinko\Proton\RateLimit\RateLimiter;
 use Rsgrinko\Proton\Support\Config;
 use Rsgrinko\Proton\Support\Logger;
@@ -30,14 +31,32 @@ final class Worker
 
     private Logger $logger;
 
-    private string $queue;
+    /** @var array<int, string> Очереди в порядке важности: сначала первая */
+    private array $queues;
 
     private bool $stopping = false;
 
+    /**
+     * Очередей может быть несколько: `worker --queue=default,webhooks`. Порядок
+     * важен — задача из очереди слева берётся раньше, и медленные посылки
+     * подписчикам не задерживают письма.
+     */
     public function __construct(string $queue = Queue::DEFAULT_QUEUE)
     {
         $this->logger = new Logger('worker');
-        $this->queue  = $queue;
+        $this->queues = self::parseQueues($queue);
+    }
+
+    /**
+     * Разбирает «default,webhooks» в список без пустых и без повторов.
+     *
+     * @return array<int, string>
+     */
+    public static function parseQueues(string $queue): array
+    {
+        $names = array_filter(array_map('trim', explode(',', $queue)), static fn (string $name): bool => $name !== '');
+
+        return $names === [] ? [Queue::DEFAULT_QUEUE] : array_values(array_unique($names));
     }
 
     /**
@@ -57,10 +76,10 @@ final class Worker
         $lifetime  = max(0, (int) Config::get('queue.worker_lifetime', 3600));
         $restartAt = (int) Setting::get(self::RESTART_KEY, '0');
 
-        $this->logger->info('Воркер запущен', ['queue' => $this->queue, 'once' => $once]);
+        $this->logger->info('Воркер запущен', ['queue' => implode(',', $this->queues), 'once' => $once]);
 
         do {
-            $job = Queue::claim($this->queue);
+            $job = $this->claim();
 
             if ($job !== null) {
                 $this->perform($job) ? $done++ : $failed++;
@@ -101,6 +120,24 @@ final class Worker
     public static function requestRestart(): void
     {
         Setting::set(self::RESTART_KEY, (string) time());
+    }
+
+    /**
+     * Берёт задачу из первой очереди, где она есть.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function claim(): ?array
+    {
+        foreach ($this->queues as $queue) {
+            $job = Queue::claim($queue);
+
+            if ($job !== null) {
+                return $job;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -194,6 +231,7 @@ final class Worker
             RememberToken::purge();
             UserSession::purge((int) Config::get('auth.sessions_keep_days', 60));
             AuditEntry::purge((int) Config::get('audit.keep_days', 180));
+            WebhookDelivery::purge((int) Config::get('webhooks.keep_days', 14));
 
             (new Logger('app'))->purge();
 

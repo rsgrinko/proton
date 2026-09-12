@@ -21,6 +21,10 @@ declare(strict_types=1);
 
 use Rsgrinko\Proton\Events\Events;
 use Rsgrinko\Proton\Support\Logger;
+use Rsgrinko\Proton\Webhooks\Webhooks;
+
+// События из реестра config/webhooks.php уезжают подписчикам сами
+Webhooks::subscribe();
 
 // Пример: отмечаем в логе каждого нового пользователя
 Events::listen('user.registered', static function (array $payload): void {
@@ -37,4 +41,11 @@ Events::listen('user.registered', static function (array $payload): void {
  * Events::listen('mail.driver', static function ($driver) {
  *     return new \App\Mail\MyDriver();
  * });
+ */
+
+/*
+ * Событие приложения уезжает подписчикам, как только объявлено реестром
+ * config/webhooks.php, — отдельная подписка для этого не нужна:
+ *
+ * Events::fire('note.created', ['note' => $note]);
  */

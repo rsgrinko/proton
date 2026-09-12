@@ -18,13 +18,14 @@ namespace Rsgrinko\Proton\Access;
  */
 final class Permission
 {
-    public const USERS_MANAGE  = 'users.manage';
-    public const ROLES_MANAGE  = 'roles.manage';
-    public const AUDIT_VIEW    = 'audit.view';
-    public const LOGS_VIEW     = 'logs.view';
-    public const SYSTEM_VIEW   = 'system.view';
-    public const SYSTEM_MANAGE = 'system.manage';
-    public const FILES_MANAGE  = 'files.manage';
+    public const USERS_MANAGE    = 'users.manage';
+    public const ROLES_MANAGE    = 'roles.manage';
+    public const AUDIT_VIEW      = 'audit.view';
+    public const LOGS_VIEW       = 'logs.view';
+    public const SYSTEM_VIEW     = 'system.view';
+    public const SYSTEM_MANAGE   = 'system.manage';
+    public const FILES_MANAGE    = 'files.manage';
+    public const WEBHOOKS_MANAGE = 'webhooks.manage';
 
     /** Видеть и править чужие записи, а не только свои */
     public const DATA_ALL = 'data.all';
@@ -36,14 +37,15 @@ final class Permission
      */
     private const CORE = [
         'Сервис' => [
-            self::USERS_MANAGE  => 'Управлять пользователями',
-            self::ROLES_MANAGE  => 'Управлять ролями',
-            self::AUDIT_VIEW    => 'Читать журнал действий',
-            self::LOGS_VIEW     => 'Читать логи',
-            self::SYSTEM_VIEW   => 'Смотреть состояние',
-            self::SYSTEM_MANAGE => 'Управлять очередью и обслуживанием',
-            self::FILES_MANAGE  => 'Управлять загруженными файлами',
-            self::DATA_ALL      => 'Доступ к чужим данным, а не только к своим',
+            self::USERS_MANAGE    => 'Управлять пользователями',
+            self::ROLES_MANAGE    => 'Управлять ролями',
+            self::AUDIT_VIEW      => 'Читать журнал действий',
+            self::LOGS_VIEW       => 'Читать логи',
+            self::SYSTEM_VIEW     => 'Смотреть состояние',
+            self::SYSTEM_MANAGE   => 'Управлять очередью и обслуживанием',
+            self::FILES_MANAGE    => 'Управлять загруженными файлами',
+            self::WEBHOOKS_MANAGE => 'Управлять подписками на события',
+            self::DATA_ALL        => 'Доступ к чужим данным, а не только к своим',
         ],
     ];
 
@@ -151,6 +153,7 @@ final class Permission
             self::SYSTEM_VIEW,
             self::SYSTEM_MANAGE,
             self::FILES_MANAGE,
+            self::WEBHOOKS_MANAGE,
             self::DATA_ALL,
         ];
 

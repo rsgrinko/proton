@@ -106,6 +106,30 @@ return [
         ],
     ],
 
+    // Проверка TLS при обращении к чужим сервисам: почта, вебхуки, интеграции.
+    // Пусто — PHP берёт хранилище системы; на Windows его обычно нет вовсе,
+    // и тогда сюда прописывается путь к cacert.pem
+    'http' => [
+        'ca_bundle'   => Env::string('HTTP_CA_BUNDLE', ''),
+        'timeout'     => Env::int('HTTP_TIMEOUT', 10),
+        // Выключать проверку — значит отдать ключи интеграций тому, кто встанет
+        // посередине. Правильный путь — прописать ca_bundle
+        'verify_peer' => Env::bool('HTTP_VERIFY_PEER', true),
+    ],
+
+    'webhooks' => [
+        'enabled'   => Env::bool('WEBHOOKS_ENABLED', true),
+        'timeout'   => Env::int('WEBHOOKS_TIMEOUT', 10),
+        'attempts'  => Env::int('WEBHOOKS_ATTEMPTS', 5),
+        // Подписка, не ответившая столько раз подряд, отключается сама;
+        // 0 — не отключать никогда
+        'disable_after' => Env::int('WEBHOOKS_DISABLE_AFTER', 20),
+        'keep_days'     => Env::int('WEBHOOKS_KEEP_DAYS', 14),
+        // Своя очередь: чужой сервер отвечает долго, а письма ждать не должны.
+        // Пусто — посылки идут общей очередью
+        'queue'         => Env::string('WEBHOOKS_QUEUE', 'webhooks'),
+    ],
+
     'queue' => [
         'sleep'                => Env::int('QUEUE_SLEEP', 3),
         'worker_lifetime'      => Env::int('QUEUE_WORKER_LIFETIME', 3600),
