@@ -86,6 +86,11 @@ WantedBy=multi-user.target
 systemctl enable --now proton-worker
 ```
 
+Без ключей воркер разбирает общую очередь и очередь вебхуков. Когда посылки
+подписчикам лучше развести с письмами по разным процессам, поднимается вторая
+служба с тем же файлом и `ExecStart=… worker --queue=webhooks`, а первой ставится
+`--queue=default`.
+
 Где systemd нет, тот же круг делает cron:
 
 ```cron

@@ -53,6 +53,7 @@ final class ReportJob extends Job
 php bin/proton worker                  # демон: разбирает очередь и ведёт расписание
 php bin/proton worker --once           # один круг и выход (для cron)
 php bin/proton worker --queue=heavy    # только именованная очередь
+php bin/proton worker --queue=default,webhooks   # несколько: левая разбирается первой
 php bin/proton worker:restart          # доработает круг и выйдет, служба поднимет заново
 ```
 

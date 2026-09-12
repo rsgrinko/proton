@@ -9,8 +9,8 @@
 Самостоятельный микрофреймворк на PHP 8.1+ **без composer и без единой внешней
 зависимости**, из которого поднимается обычное веб-приложение: маршрутизация, ORM
 (Active Record), миграции, авторизация с ролями и правами, готовая панель управления,
-API с ключами, очередь задач с воркером и расписанием, почта, кэш, события, загрузка
-файлов, консоль с генераторами и свой тестраннер.
+API с ключами, очередь задач с воркером и расписанием, почта, вебхуки, кэш, события,
+загрузка файлов, консоль с генераторами и свой тестраннер.
 
 Поставляется в двух частях: `framework/` — ядро (его меняют редко), всё остальное в
 корне — готовый скелет приложения, который запускается сразу после установки.
@@ -43,7 +43,9 @@ API с ключами, очередь задач с воркером и расп
 - Пути строятся от константы `APP_ROOT`, разделители — прямые слэши.
 - В коде, документации, комментариях и истории коммитов **не должно быть следов того,
   что что-то писал ИИ**: ни упоминаний ассистентов, ни соавторства, ни служебных
-  подписей, ни штампов вроде «сгенерировано», «AI», «assistant».
+  подписей, ни штампов вроде «сгенерировано», «AI», «assistant». В частности, в
+  сообщениях коммитов и описаниях PR не бывает трейлеров `Co-Authored-By` и
+  `Claude-Session`: автор кода один — владелец репозитория.
 - Комментарии пишутся так, как их писал бы разработчик коллеге: по делу, без пересказа
   очевидного и без канцелярита. Коммиты — короткие однострочные сообщения на русском.
 
@@ -62,10 +64,11 @@ framework/            ядро, namespace Rsgrinko\Proton\
   Auth/               Auth, Password, Crypto, Csrf, Devices
   Access/             Permission (реестр прав), Role-логика, Scope, Viewer
   Models/             модели ядра: User, Role, ApiToken, RememberToken, UserSession,
-                      AuthToken, AuditEntry, Setting
+                      AuthToken, AuditEntry, Setting, Webhook, WebhookDelivery
   Queue/              Queue, Job, Worker, Scheduler
   Mail/               Mail, Message, Mime, Drivers/ (mail, smtp, mailer, log, null),
                       SendMailJob
+  Webhooks/           Webhooks (реестр событий и рассылка), DeliverWebhookJob
   Install/            Installer — общий движок установки для консоли и веба
   Cache/  Events/  Files/  RateLimit/  View/  Console/
 
@@ -75,14 +78,15 @@ app/                  код приложения, namespace App\
   Jobs/               свои задачи очереди
 
 config/               config.php (читает .env), menu.php, permissions.php,
-                      events.php, schedule.php, commands.php
+                      events.php, webhooks.php, schedule.php, commands.php
 routes/               web.php, admin.php, api.php
 resources/views/      шаблоны (layouts, auth, admin, notes, install, mail, errors)
 migrations/           миграции: 20260912100000_create_core_tables.php
 stubs/                заготовки генераторов, stubs/crud/ — заготовки раздела целиком
 tests/                свой раннер (run.php) и тесты
 docs/                 документация: START, DATABASE, MIGRATIONS, ROUTING, ACCESS,
-                      QUEUE, MAIL, CONSOLE, TESTS, DEPLOY, STATUS (на чём остановились)
+                      QUEUE, MAIL, WEBHOOKS, CONSOLE, TESTS, DEPLOY,
+                      STATUS (на чём остановились)
 public/index.php      единственная точка входа
 bin/proton            консольная утилита
 var/                  runtime: база SQLite, логи, кэш, загруженные файлы
@@ -135,6 +139,20 @@ action()`. Секреты в журнал не пишутся, `Audit::between()
 **Почта**: драйвер выбирается настройкой `MAIL_DRIVER` (`mail`, `smtp`, `mailer`, `log`,
 `null`), подменяется событием `mail.driver` — места отправки про способ не знают.
 
+**Вебхуки** (`Webhooks`) — наружная сторона событий: подписка из панели получает
+посылку POST с подписью `X-Proton-Signature` (HMAC-SHA256 от «время.тело» секретом
+подписки). Подписаться можно только на событие из реестра — события живут в коде
+(свои — в `config/webhooks.php`), в базе только подписки и журнал доставок. Реестр
+повешен на шину событий строкой `Webhooks::subscribe()` в `config/events.php`,
+поэтому `Events::fire()` достаточно. Доставляет очередь: повтор берёт тело из
+журнала, чтобы подпись сходилась, а подписка, молчащая `WEBHOOKS_DISABLE_AFTER`
+раз подряд, отключается сама. Посылки идут очередью `webhooks` — воркер умеет
+несколько очередей через запятую (`worker --queue=default,webhooks`).
+
+**Чужие HTTP-сервисы** — только через `Support\HttpClient` (curl с откатом на
+потоки): проверку сертификата он не отключает, а путь к набору корневых берёт из
+`HTTP_CA_BUNDLE`. Своих `curl_init` в коде больше быть не должно.
+
 **Схему меняют только миграции**: файл на миграцию, имя `20260912100000_create_orders.php`,
 класс по хвосту имени (`CreateOrders`). Таблица описывается `Blueprint`, а не строками
 SQL; у каждой миграции честный `down()`. Накат идёт под блокировкой, шаг знает, что он
@@ -171,11 +189,13 @@ php bin/proton serve                 встроенный сервер для р
 php bin/proton test [--filter=]      тесты
 php bin/proton make:crud <Имя> --fields="имя:тип:подпись,…"   раздел целиком
 php bin/proton make:model|make:controller|make:migration|make:job|make:command|make:test
-php bin/proton worker [--once]|worker:restart|schedule:run
+php bin/proton worker [--once] [--queue=default,webhooks]|worker:restart|schedule:run
 php bin/proton queue:status|queue:retry|queue:purge
 php bin/proton user:create|user:list|user:password|user:delete|role:list
 php bin/proton key:create|key:list|key:revoke
 php bin/proton mail:test <адрес>     пробное письмо
+php bin/proton webhook:list [--events]  подписки или реестр событий
+php bin/proton webhook:test <id>     пробная посылка подписчику
 php bin/proton status                самопроверка
 php bin/proton route:list|cache:clear|logs:purge|app:key|seed
 ```
