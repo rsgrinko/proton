@@ -22,6 +22,7 @@ use Rsgrinko\Proton\Models\User;
 use Rsgrinko\Proton\Models\UserNotification;
 use Rsgrinko\Proton\Models\Webhook;
 use Rsgrinko\Proton\Models\WebhookDelivery;
+use Rsgrinko\Proton\Support\Settings;
 
 /**
  * Запрос к ядру от лица пользователя (или гостя, если его нет).
@@ -173,6 +174,7 @@ test('http: все страницы администратора отвечаю�
         '/admin/roles', '/admin/roles/new', '/admin/roles/' . (Role::admin()?->id() ?? 1),
         '/admin/tokens', '/admin/audit', '/admin/logs', '/admin/system',
         '/admin/webhooks', '/admin/webhooks/new', '/admin/webhooks/' . httpWebhook()->id(),
+        '/admin/settings',
     ];
 
     foreach ($paths as $path) {
@@ -183,7 +185,7 @@ test('http: все страницы администратора отвечаю�
 test('http: обычный пользователь не попадает в служебные разделы', function (): void {
     $closed = [
         '/admin', '/admin/users', '/admin/roles', '/admin/tokens',
-        '/admin/audit', '/admin/logs', '/admin/system', '/admin/webhooks',
+        '/admin/audit', '/admin/logs', '/admin/system', '/admin/webhooks', '/admin/settings',
     ];
 
     foreach ($closed as $path) {
@@ -274,6 +276,42 @@ test('http: лента уведомлений своя у каждого', funct
 
     assertStatus(302, httpRequest('POST', '/notifications/read', httpAdmin()));
     assertSame(0, UserNotification::unreadFor(httpAdmin()->id()));
+});
+
+test('http: настройка правится из панели и сразу действует', function (): void {
+    withConfig(['ui.per_page' => 25], static function (): void {
+        $response = httpRequest('POST', '/admin/settings', httpAdmin(), [
+            'settings' => ['ui.per_page' => '9'],
+        ]);
+
+        assertStatus(302, $response);
+        assertSame(9, Rsgrinko\Proton\Support\Config::get('ui.per_page'), 'значение применилось к процессу');
+        assertTrue(Settings::overridden('ui.per_page'));
+
+        // Негодное значение до базы не доходит
+        httpRequest('POST', '/admin/settings', httpAdmin(), ['settings' => ['ui.per_page' => 'много']]);
+
+        assertSame(9, (int) Settings::value('ui.per_page'), 'осталось прежнее');
+
+        // Сброс возвращает настройку к значению из .env
+        assertStatus(302, httpRequest('POST', '/admin/settings/reset', httpAdmin(), ['key' => 'ui.per_page']));
+        assertFalse(Settings::overridden('ui.per_page'));
+
+        // И всё это попало в журнал действий
+        $entry = Rsgrinko\Proton\Models\AuditEntry::query()
+            ->where('entity', 'settings')
+            ->orderBy('id', 'desc')
+            ->first();
+
+        assertNotNull($entry, 'правка настроек пишется в журнал');
+    });
+});
+
+test('http: обычный пользователь настройки не правит', function (): void {
+    $response = httpRequest('POST', '/admin/settings', httpUser(), ['settings' => ['ui.per_page' => '3']]);
+
+    assertStatus(403, $response);
+    assertFalse(Settings::overridden('ui.per_page'));
 });
 
 test('http: подписка на события заводится и проверяется из панели', function (): void {

@@ -26,6 +26,7 @@ final class Permission
     public const SYSTEM_MANAGE   = 'system.manage';
     public const FILES_MANAGE    = 'files.manage';
     public const WEBHOOKS_MANAGE = 'webhooks.manage';
+    public const SETTINGS_MANAGE = 'settings.manage';
 
     /** Видеть и править чужие записи, а не только свои */
     public const DATA_ALL = 'data.all';
@@ -44,7 +45,8 @@ final class Permission
             self::SYSTEM_VIEW     => 'Смотреть состояние',
             self::SYSTEM_MANAGE   => 'Управлять очередью и обслуживанием',
             self::FILES_MANAGE    => 'Управлять загруженными файлами',
-            self::WEBHOOKS_MANAGE => 'Управлять подписками на события',
+            self::WEBHOOKS_MANAGE => 'Управлять вебхуками',
+            self::SETTINGS_MANAGE => 'Менять настройки приложения',
             self::DATA_ALL        => 'Доступ к чужим данным, а не только к своим',
         ],
     ];
@@ -154,6 +156,7 @@ final class Permission
             self::SYSTEM_MANAGE,
             self::FILES_MANAGE,
             self::WEBHOOKS_MANAGE,
+            self::SETTINGS_MANAGE,
             self::DATA_ALL,
         ];
 

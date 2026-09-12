@@ -14,6 +14,7 @@ use App\Controllers\Admin\AuditController;
 use App\Controllers\Admin\DashboardController;
 use App\Controllers\Admin\LogsController;
 use App\Controllers\Admin\RolesController;
+use App\Controllers\Admin\SettingsController;
 use App\Controllers\Admin\SystemController;
 use App\Controllers\Admin\TokensController;
 use App\Controllers\Admin\UsersController;
@@ -62,6 +63,12 @@ return static function (Router $router): void {
             $router->post('/{id:\d+}/toggle', [WebhooksController::class, 'toggle'])->name('admin.webhooks.toggle');
             $router->post('/{id:\d+}/secret', [WebhooksController::class, 'rotate'])->name('admin.webhooks.rotate');
             $router->post('/{id:\d+}/delete', [WebhooksController::class, 'delete'])->name('admin.webhooks.delete');
+        });
+
+        $router->group(['prefix' => '/settings', 'middleware' => 'can:' . Permission::SETTINGS_MANAGE], function (Router $router): void {
+            $router->get('', [SettingsController::class, 'index'])->name('admin.settings');
+            $router->post('', [SettingsController::class, 'update']);
+            $router->post('/reset', [SettingsController::class, 'reset'])->name('admin.settings.reset');
         });
 
         $router->get('/audit', [AuditController::class, 'index'])

@@ -13,6 +13,7 @@ use Rsgrinko\Proton\Http\Controller;
 use Rsgrinko\Proton\Http\Request;
 use Rsgrinko\Proton\Http\Response;
 use Rsgrinko\Proton\Support\Audit;
+use Rsgrinko\Proton\Support\Config;
 use Rsgrinko\Proton\Support\ProtonException;
 
 /**
@@ -61,6 +62,15 @@ final class NotesController extends Controller
             'body'   => 'nullable|max:20000',
             'pinned' => 'nullable|boolean',
         ], ['title' => 'Название', 'body' => 'Текст']);
+
+        $limit = (int) Config::get('notes.per_user', 0);
+
+        // Ограничение правится из панели; 0 — без ограничения
+        if ($limit > 0 && Note::query()->where('user_id', $viewer->id())->count() >= $limit) {
+            $this->flash('Заметок уже ' . $limit . ', больше настройка не разрешает', 'error');
+
+            return $this->redirect('notes.index');
+        }
 
         $note = new Note($data);
 

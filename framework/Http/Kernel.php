@@ -18,6 +18,7 @@ use Rsgrinko\Proton\Support\Config;
 use Rsgrinko\Proton\Support\Logger;
 use Rsgrinko\Proton\Support\ProtonException;
 use Rsgrinko\Proton\Support\RequestId;
+use Rsgrinko\Proton\Support\Settings;
 use Rsgrinko\Proton\Support\ValidationException;
 use Rsgrinko\Proton\View\View;
 use Throwable;
@@ -44,6 +45,9 @@ final class Kernel
     {
         // Сквозная цепочка: клиент прислал свою или заводим новую
         RequestId::set($request->header(RequestId::HEADER));
+
+        // Значения из панели ложатся поверх .env до того, как их кто-то прочитает
+        Settings::apply();
 
         try {
             return $this->finish($this->router()->dispatch($request));

@@ -177,6 +177,12 @@ return [
         'per_page' => Env::int('UI_PER_PAGE', 25),
     ],
 
+    // Настройки самого приложения, а не ядра. Эту правят из панели —
+    // см. config/settings.php
+    'notes' => [
+        'per_user' => Env::int('NOTES_PER_USER', 0),
+    ],
+
     'paths' => [
         'log'     => APP_ROOT . '/var/log',
         'tmp'     => APP_ROOT . '/var/tmp',

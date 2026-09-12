@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Rsgrinko\Proton\Console;
 
 use Rsgrinko\Proton\Support\Config;
+use Rsgrinko\Proton\Support\Settings;
 use Throwable;
 
 /**
@@ -96,6 +97,10 @@ final class Application
         if ($command === null) {
             return $this->unknown($name);
         }
+
+        // Команда должна работать на тех же настройках, что и веб-часть:
+        // значения из панели ложатся поверх .env
+        Settings::apply();
 
         try {
             return $command->withInput($this->args, $this->options)->run();
