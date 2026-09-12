@@ -10,6 +10,7 @@ use Rsgrinko\Proton\Models\RememberToken;
 use Rsgrinko\Proton\Models\Setting;
 use Rsgrinko\Proton\Models\UserSession;
 use Rsgrinko\Proton\Models\WebhookDelivery;
+use Rsgrinko\Proton\Notifications\Notify;
 use Rsgrinko\Proton\RateLimit\RateLimiter;
 use Rsgrinko\Proton\Support\Config;
 use Rsgrinko\Proton\Support\Logger;
@@ -232,6 +233,7 @@ final class Worker
             UserSession::purge((int) Config::get('auth.sessions_keep_days', 60));
             AuditEntry::purge((int) Config::get('audit.keep_days', 180));
             WebhookDelivery::purge((int) Config::get('webhooks.keep_days', 14));
+            Notify::purge();
 
             (new Logger('app'))->purge();
 

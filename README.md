@@ -3,7 +3,7 @@
 Микрофреймворк на чистом PHP 8.1+ **без composer и без единой внешней зависимости**.
 Из коробки: маршрутизация, ORM (Active Record), миграции, авторизация с ролями и правами,
 готовая панель управления, API с ключами, очередь задач с воркером и расписанием, почта,
-вебхуки с подписью и повторами, кэш, события, загрузка файлов, консольные команды
+вебхуки с подписью и повторами, уведомления, кэш, события, загрузка файлов, консоль
 с генераторами кода и свой тестраннер.
 
 Работает одинаково на Linux (nginx + php-fpm) и Windows (`php bin/proton serve`).
@@ -25,7 +25,7 @@ php bin/proton serve        # http://127.0.0.1:8000
 
 ```bash
 php bin/proton status       # окружение, база, ключи, очередь, почта
-php bin/proton test         # 123 теста, своя база в памяти
+php bin/proton test         # 132 теста, своя база в памяти
 php bin/proton route:list   # карта адресов
 php bin/proton help         # все команды
 ```
@@ -42,10 +42,12 @@ framework/            ядро, namespace Rsgrinko\Proton\ — его меняю
   Auth/               Auth, Password, Crypto, Csrf, Devices
   Access/             Permission (реестр прав), Role-логика, Scope, Viewer
   Models/             модели ядра: User, Role, ApiToken, RememberToken, UserSession,
-                      AuthToken, AuditEntry, Setting, Webhook, WebhookDelivery
+                      AuthToken, AuditEntry, Setting, Webhook, WebhookDelivery,
+                      UserNotification
   Queue/              Queue, Job, Worker, Scheduler
   Mail/               Mail, Message, Mime, Drivers/ (mail, smtp, mailer, log, null), SendMailJob
   Webhooks/           Webhooks (реестр событий и рассылка), DeliverWebhookJob
+  Notifications/      Notification, Notify (каналы: лента и письмо)
   Cache/  Events/  Files/  RateLimit/  View/  Console/
 
 app/                  код приложения, namespace App\
@@ -121,6 +123,14 @@ Webhooks::register('order.paid', 'Заказ оплачен', 'Заказы');  
 Events::fire('order.paid', ['order' => $order]);               // дальше уедет само
 ```
 
+**Уведомления**: то же событие, но внутрь — строкой в ленте пользователя и письмом.
+Адресата можно не перечислять, а указать право:
+
+```php
+Notify::send($user, new OrderPaid($order));
+Notify::toPermission(Permission::SYSTEM_MANAGE, new QueueStuckNotification($count));
+```
+
 ## Документация
 
 | Файл | О чём |
@@ -133,6 +143,7 @@ Events::fire('order.paid', ['order' => $order]);               // дальше �
 | [docs/QUEUE.md](docs/QUEUE.md) | очередь, воркер, расписание, события, кэш |
 | [docs/MAIL.md](docs/MAIL.md) | письма и драйверы, в том числе внешний сервис |
 | [docs/WEBHOOKS.md](docs/WEBHOOKS.md) | подписки на события, подпись посылок, повторы |
+| [docs/NOTIFICATIONS.md](docs/NOTIFICATIONS.md) | уведомления: лента в приложении и письма |
 | [docs/CONSOLE.md](docs/CONSOLE.md) | команды и генераторы |
 | [docs/TESTS.md](docs/TESTS.md) | как писать и гонять тесты |
 | [docs/DEPLOY.md](docs/DEPLOY.md) | nginx, php-fpm, systemd, обслуживание |

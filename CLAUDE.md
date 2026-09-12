@@ -9,8 +9,8 @@
 Самостоятельный микрофреймворк на PHP 8.1+ **без composer и без единой внешней
 зависимости**, из которого поднимается обычное веб-приложение: маршрутизация, ORM
 (Active Record), миграции, авторизация с ролями и правами, готовая панель управления,
-API с ключами, очередь задач с воркером и расписанием, почта, вебхуки, кэш, события,
-загрузка файлов, консоль с генераторами и свой тестраннер.
+API с ключами, очередь задач с воркером и расписанием, почта, вебхуки, уведомления,
+кэш, события, загрузка файлов, консоль с генераторами и свой тестраннер.
 
 Поставляется в двух частях: `framework/` — ядро (его меняют редко), всё остальное в
 корне — готовый скелет приложения, который запускается сразу после установки.
@@ -64,11 +64,13 @@ framework/            ядро, namespace Rsgrinko\Proton\
   Auth/               Auth, Password, Crypto, Csrf, Devices
   Access/             Permission (реестр прав), Role-логика, Scope, Viewer
   Models/             модели ядра: User, Role, ApiToken, RememberToken, UserSession,
-                      AuthToken, AuditEntry, Setting, Webhook, WebhookDelivery
+                      AuthToken, AuditEntry, Setting, Webhook, WebhookDelivery,
+                      UserNotification
   Queue/              Queue, Job, Worker, Scheduler
   Mail/               Mail, Message, Mime, Drivers/ (mail, smtp, mailer, log, null),
                       SendMailJob
   Webhooks/           Webhooks (реестр событий и рассылка), DeliverWebhookJob
+  Notifications/      Notification, Notify, уведомления ядра
   Install/            Installer — общий движок установки для консоли и веба
   Cache/  Events/  Files/  RateLimit/  View/  Console/
 
@@ -85,7 +87,7 @@ migrations/           миграции: 20260912100000_create_core_tables.php
 stubs/                заготовки генераторов, stubs/crud/ — заготовки раздела целиком
 tests/                свой раннер (run.php) и тесты
 docs/                 документация: START, DATABASE, MIGRATIONS, ROUTING, ACCESS,
-                      QUEUE, MAIL, WEBHOOKS, CONSOLE, TESTS, DEPLOY,
+                      QUEUE, MAIL, WEBHOOKS, NOTIFICATIONS, CONSOLE, TESTS, DEPLOY,
                       STATUS (на чём остановились)
 public/index.php      единственная точка входа
 bin/proton            консольная утилита
@@ -148,6 +150,17 @@ action()`. Секреты в журнал не пишутся, `Audit::between()
 журнала, чтобы подпись сходилась, а подписка, молчащая `WEBHOOKS_DISABLE_AFTER`
 раз подряд, отключается сама. Посылки идут очередью `webhooks` — воркер умеет
 несколько очередей через запятую (`worker --queue=default,webhooks`).
+
+**Уведомления** (`Notifications\Notify`) — внутренняя сторона событий: строка в ленте
+пользователя (`/notifications`, модель `UserNotification`) и письмо очередью. Каналы
+перечисляет само уведомление (`Notification::channels()`), адресата можно не
+перечислять, а указать право: `Notify::toPermission('webhooks.manage', …)`. Уведомление
+никогда не роняет вызвавший его код — сорвавшийся канал уходит в лог. Прочитанные
+старше `NOTIFICATIONS_KEEP_DAYS` убирает воркер, непрочитанные не трогает.
+
+**Адрес для письма** — `Router::absolute('имя', [...])`: путь без домена в письме не
+кликается. Роутер поднимается сам и вне запроса (`Router::boot()`), иначе задача
+в воркере падала бы на «Неизвестный маршрут».
 
 **Чужие HTTP-сервисы** — только через `Support\HttpClient` (curl с откатом на
 потоки): проверку сертификата он не отключает, а путь к набору корневых берёт из

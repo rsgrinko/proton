@@ -16,12 +16,16 @@ declare(strict_types=1);
  * @var bool $bare страница входа — без шапки и меню
  */
 
+use Rsgrinko\Proton\Models\UserNotification;
 use Rsgrinko\Proton\Support\Config;
 use Rsgrinko\Proton\View\View;
 
 $bare = $bare ?? false;
 $menu = (array) Config::get('menu', []);
 $name = (string) Config::get('app.name', 'Proton');
+
+// Число у ссылки «Уведомления»: один COUNT на страницу, и только вошедшему
+$unread = $viewer->isGuest() ? 0 : UserNotification::unreadFor($viewer->id());
 ?>
 <!doctype html>
 <html lang="ru">
@@ -320,6 +324,9 @@ $name = (string) Config::get('app.name', 'Proton');
 
         <?php if (!$viewer->isGuest()) { ?>
             <span class="who">
+                <a class="muted small" href="<?= View::e(View::route('notifications')) ?>" title="Уведомления">
+                    Уведомления<?= $unread > 0 ? ' <span class="badge warn">' . $unread . '</span>' : '' ?>
+                </a>
                 <a class="muted small" href="<?= View::e(View::route('profile')) ?>"><?= View::e($viewer->name()) ?></a>
                 <form method="post" action="<?= View::e(View::route('logout')) ?>">
                     <?= View::csrf() ?>

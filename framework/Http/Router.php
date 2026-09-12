@@ -7,6 +7,7 @@ namespace Rsgrinko\Proton\Http;
 use ReflectionFunctionAbstract;
 use ReflectionMethod;
 use ReflectionNamedType;
+use Rsgrinko\Proton\Support\Config;
 use Rsgrinko\Proton\Support\Container;
 use Rsgrinko\Proton\Support\ProtonException;
 
@@ -36,6 +37,9 @@ final class Router
 
     /** @var array<string, Route> Именованные маршруты — общие для всех роутеров */
     private static array $named = [];
+
+    /** Защита от повторного входа: файл маршрутов сам может спросить адрес */
+    private static bool $booting = false;
 
     /**
      * Подключает файл маршрутов. Файл возвращает функцию, принимающую роутер.
@@ -200,6 +204,8 @@ final class Router
      */
     public static function url(string $name, array $params = []): string
     {
+        self::boot();
+
         if (!isset(self::$named[$name])) {
             throw new ProtonException('Неизвестный маршрут: ' . $name);
         }
@@ -208,11 +214,48 @@ final class Router
     }
 
     /**
+     * Полный адрес с доменом — для писем и чужих систем: относительный путь
+     * в письме не кликается.
+     *
+     * @param array<string, mixed> $params
+     */
+    public static function absolute(string $name, array $params = []): string
+    {
+        $base = rtrim((string) Config::get('app.url', ''), '/');
+
+        return $base . self::url($name, $params);
+    }
+
+    /**
      * Есть ли такой маршрут — вьюхе иногда нужно спросить, не падая.
      */
     public static function has(string $name): bool
     {
+        self::boot();
+
         return isset(self::$named[$name]);
+    }
+
+    /**
+     * Поднимает маршруты, если их ещё никто не поднимал.
+     *
+     * Веб поднимает их сам — первым же запросом. А вот воркер и консоль ядро
+     * не поднимают вовсе, и адрес для письма там собрать не из чего: без этого
+     * уведомление из задачи падало бы на «Неизвестный маршрут».
+     */
+    public static function boot(): void
+    {
+        if (self::$named !== [] || self::$booting) {
+            return;
+        }
+
+        self::$booting = true;
+
+        try {
+            (new Kernel())->router();
+        } finally {
+            self::$booting = false;
+        }
     }
 
     /**

@@ -18,6 +18,7 @@ use App\Controllers\Web\AuthController;
 use App\Controllers\Web\HomeController;
 use App\Controllers\Web\InstallController;
 use App\Controllers\Web\NotesController;
+use App\Controllers\Web\NotificationsController;
 use App\Controllers\Web\PasswordController;
 use App\Controllers\Web\ProfileController;
 use App\Controllers\Web\RegisterController;
@@ -62,6 +63,15 @@ return static function (Router $router): void {
             $router->post('/profile/password', [ProfileController::class, 'password'])->name('profile.password');
             $router->post('/profile/devices/revoke', [ProfileController::class, 'revoke'])->name('profile.devices.revoke');
             $router->post('/profile/devices/others', [ProfileController::class, 'revokeOthers'])->name('profile.devices.others');
+
+            // Свои уведомления смотрит каждый вошедший: право тут ни при чём,
+            // чужих он всё равно не увидит
+            $router->group(['prefix' => '/notifications'], function (Router $router): void {
+                $router->get('', [NotificationsController::class, 'index'])->name('notifications');
+                $router->post('/read', [NotificationsController::class, 'readAll'])->name('notifications.read_all');
+                $router->post('/{id:\d+}/read', [NotificationsController::class, 'read'])->name('notifications.read');
+                $router->post('/{id:\d+}/delete', [NotificationsController::class, 'delete'])->name('notifications.delete');
+            });
 
             // Демонстрационный раздел: удаляется целиком вместе с моделью,
             // контроллером, шаблонами и миграцией

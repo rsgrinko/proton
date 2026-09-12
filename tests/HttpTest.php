@@ -19,6 +19,7 @@ use Rsgrinko\Proton\Http\Response;
 use Rsgrinko\Proton\Models\ApiToken;
 use Rsgrinko\Proton\Models\Role;
 use Rsgrinko\Proton\Models\User;
+use Rsgrinko\Proton\Models\UserNotification;
 use Rsgrinko\Proton\Models\Webhook;
 use Rsgrinko\Proton\Models\WebhookDelivery;
 
@@ -166,7 +167,7 @@ test('http: все страницы администратора отвечаю�
     $note->forceFill(['user_id' => httpAdmin()->id()])->save();
 
     $paths = [
-        '/', '/profile',
+        '/', '/profile', '/notifications',
         '/notes', '/notes/new', '/notes/' . $note->id(), '/notes/' . $note->id() . '/edit',
         '/admin', '/admin/users', '/admin/users/new', '/admin/users/' . httpAdmin()->id(),
         '/admin/roles', '/admin/roles/new', '/admin/roles/' . (Role::admin()?->id() ?? 1),
@@ -242,6 +243,37 @@ test('http: неверные данные возвращают человека 
 
     assertStatus(302, $response, 'без обязательного поля запись не создаётся');
     assertSame(0, Note::query()->where('title', '')->count());
+});
+
+test('http: лента уведомлений своя у каждого', function (): void {
+    $mine   = UserNotification::add(httpAdmin()->id(), 'test.http', 'Моё уведомление', 'текст', '/profile');
+    $others = UserNotification::add(httpUser()->id(), 'test.http', 'Чужое уведомление');
+
+    afterTests(static function () use ($mine, $others): void {
+        UserNotification::query()->whereIn('id', [$mine->id(), $others->id()])->delete();
+    });
+
+    $list = httpRequest('GET', '/notifications', httpAdmin());
+
+    assertStatus(200, $list);
+    assertContains('Моё уведомление', $list->body());
+    assertNotContains('Чужое уведомление', $list->body(), 'чужих уведомлений в ленте нет');
+
+    // Чтение ведёт по ссылке уведомления
+    $read = httpRequest('POST', '/notifications/' . $mine->id() . '/read', httpAdmin());
+
+    assertStatus(302, $read);
+    assertContains('/profile', $read->header('Location'));
+    assertTrue(assertNotNull(UserNotification::find($mine->id()))->read());
+
+    // Чужое уведомление для администратора просто не существует
+    $foreign = httpRequest('POST', '/notifications/' . $others->id() . '/read', httpAdmin());
+
+    assertStatus(302, $foreign, 'уводит в ленту, а не показывает «нет доступа»');
+    assertFalse(assertNotNull(UserNotification::find($others->id()))->read(), 'чужое не прочиталось');
+
+    assertStatus(302, httpRequest('POST', '/notifications/read', httpAdmin()));
+    assertSame(0, UserNotification::unreadFor(httpAdmin()->id()));
 });
 
 test('http: подписка на события заводится и проверяется из панели', function (): void {

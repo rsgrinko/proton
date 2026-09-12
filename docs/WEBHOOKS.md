@@ -78,6 +78,9 @@ if (abs(time() - (int) $_SERVER['HTTP_X_PROTON_TIMESTAMP']) > 300) {
   `webhook:test`. Событие у неё `webhook.test`.
 - Подписка, не ответившая `WEBHOOKS_DISABLE_AFTER` раз подряд, **отключается
   сама**: возить посылки в никуда незачем. Включение обратно обнуляет счётчик.
+  Об этом узнают все, у кого есть право `webhooks.manage` — уведомлением в ленте
+  и письмом (см. [NOTIFICATIONS.md](NOTIFICATIONS.md)): молча отключённая
+  подписка означает тихо потерянные события.
 
 ```bash
 php bin/proton webhook:list             # подписки и состояние посылок

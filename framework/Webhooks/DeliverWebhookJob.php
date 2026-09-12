@@ -4,8 +4,11 @@ declare(strict_types=1);
 
 namespace Rsgrinko\Proton\Webhooks;
 
+use Rsgrinko\Proton\Access\Permission;
 use Rsgrinko\Proton\Models\Webhook;
 use Rsgrinko\Proton\Models\WebhookDelivery;
+use Rsgrinko\Proton\Notifications\Notify;
+use Rsgrinko\Proton\Notifications\WebhookDisabledNotification;
 use Rsgrinko\Proton\Queue\Job;
 use Rsgrinko\Proton\Support\Config;
 use Rsgrinko\Proton\Support\HttpClient;
@@ -145,6 +148,15 @@ final class DeliverWebhookJob extends Job
             'error'    => $error,
             'disabled' => $disabled,
         ]);
+
+        // Отключённая подписка — это тихо потерянные события: пусть те, кто
+        // отвечает за вебхуки, узнают об этом сразу
+        if ($disabled) {
+            Notify::toPermission(
+                Permission::WEBHOOKS_MANAGE,
+                new WebhookDisabledNotification($webhook, $error)
+            );
+        }
     }
 
     private function client(): HttpClient

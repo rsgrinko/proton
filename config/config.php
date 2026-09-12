@@ -117,6 +117,12 @@ return [
         'verify_peer' => Env::bool('HTTP_VERIFY_PEER', true),
     ],
 
+    'notifications' => [
+        // Прочитанные уведомления старше срока убирает воркер; непрочитанные
+        // не трогаются вовсе — человек их ещё не видел
+        'keep_days' => Env::int('NOTIFICATIONS_KEEP_DAYS', 90),
+    ],
+
     'webhooks' => [
         'enabled'   => Env::bool('WEBHOOKS_ENABLED', true),
         'timeout'   => Env::int('WEBHOOKS_TIMEOUT', 10),
