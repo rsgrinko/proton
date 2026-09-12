@@ -1,0 +1,14 @@
+<?php
+
+declare(strict_types=1);
+
+/**
+ * {{class}}.
+ *
+ * Тесты объявляются функцией test(), проверки — assertSame и подобными.
+ * За собой прибираем через afterTests().
+ */
+
+test('{{slug}}: заготовка', function (): void {
+    assertTrue(true, 'здесь настоящая проверка');
+});

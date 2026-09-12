@@ -1,0 +1,22 @@
+<?php
+
+declare(strict_types=1);
+
+namespace {{namespace}};
+
+use Rsgrinko\Proton\Http\Controller;
+use Rsgrinko\Proton\Http\Request;
+use Rsgrinko\Proton\Http\Response;
+
+/**
+ * {{class}}.
+ */
+final class {{class}} extends Controller
+{
+    public function index(Request $request): Response
+    {
+        return $this->view('{{slug}}/index', [
+            'active' => '{{slug}}',
+        ], 'Раздел');
+    }
+}

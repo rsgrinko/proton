@@ -1,0 +1,265 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Rsgrinko\Proton\Support;
+
+use Rsgrinko\Proton\Auth\Crypto;
+use Rsgrinko\Proton\Database\Connection;
+use Rsgrinko\Proton\Database\Migrator;
+use Rsgrinko\Proton\Files\Storage;
+use Rsgrinko\Proton\Models\Setting;
+use Rsgrinko\Proton\Models\User;
+use Rsgrinko\Proton\Queue\Queue;
+use Throwable;
+
+/**
+ * Самопроверка: что с окружением, базой, ключами, очередью и правами на каталоги.
+ *
+ * Проверки только читают и не лезут в сеть: страница состояния должна открываться
+ * быстро и не иметь побочных действий. Каждая возвращает уровень, заголовок,
+ * значение и — если что-то не так — подсказку, что делать.
+ */
+final class Diagnostics
+{
+    public const OK    = 'ok';
+    public const WARN  = 'warn';
+    public const ERROR = 'error';
+
+    /**
+     * Все проверки.
+     *
+     * @return array<int, array{level: string, title: string, value: string, hint: string}>
+     */
+    public static function run(): array
+    {
+        return array_merge(
+            self::environment(),
+            self::storage(),
+            self::database(),
+            self::application()
+        );
+    }
+
+    /**
+     * Худший уровень из всех проверок — по нему красится плашка в меню.
+     *
+     * @param array<int, array{level: string, title: string, value: string, hint: string}> $checks
+     */
+    public static function worst(array $checks): string
+    {
+        foreach ([self::ERROR, self::WARN] as $level) {
+            foreach ($checks as $check) {
+                if ($check['level'] === $level) {
+                    return $level;
+                }
+            }
+        }
+
+        return self::OK;
+    }
+
+    /**
+     * @return array<int, array{level: string, title: string, value: string, hint: string}>
+     */
+    private static function environment(): array
+    {
+        $checks = [];
+
+        $checks[] = self::check(
+            PHP_VERSION_ID >= 80100,
+            'Версия PHP',
+            PHP_VERSION,
+            'Нужен PHP 8.1 или новее'
+        );
+
+        foreach (['pdo', 'mbstring', 'openssl', 'json'] as $extension) {
+            $checks[] = self::check(
+                extension_loaded($extension),
+                'Расширение ' . $extension,
+                extension_loaded($extension) ? 'есть' : 'нет',
+                'Установите php-' . $extension
+            );
+        }
+
+        return $checks;
+    }
+
+    /**
+     * @return array<int, array{level: string, title: string, value: string, hint: string}>
+     */
+    private static function storage(): array
+    {
+        $checks = [];
+
+        foreach (['paths.log' => 'Каталог логов', 'paths.cache' => 'Каталог кэша', 'paths.storage' => 'Хранилище файлов'] as $key => $title) {
+            $dir = (string) Config::get($key, '');
+
+            $checks[] = self::check(
+                $dir !== '' && is_dir($dir) && is_writable($dir),
+                $title,
+                $dir === '' ? 'не задан' : $dir,
+                'Каталог должен существовать и быть доступным на запись пользователю веб-сервера'
+            );
+        }
+
+        $free = @disk_free_space(APP_ROOT);
+
+        if ($free !== false) {
+            $checks[] = self::check(
+                $free > 200 * 1024 * 1024,
+                'Место на диске',
+                Str::bytes((int) $free) . ' свободно',
+                'Меньше 200 МБ: логи и загрузки скоро перестанут писаться',
+                self::WARN
+            );
+        }
+
+        $checks[] = [
+            'level' => self::OK,
+            'title' => 'Занято хранилищем',
+            'value' => Str::bytes(Storage::usedBytes()),
+            'hint'  => '',
+        ];
+
+        return $checks;
+    }
+
+    /**
+     * @return array<int, array{level: string, title: string, value: string, hint: string}>
+     */
+    private static function database(): array
+    {
+        $checks = [];
+
+        try {
+            $db = Connection::instance();
+
+            $checks[] = self::check(true, 'База данных', $db->driver() . ', подключение есть', '');
+
+            $migrator = new Migrator();
+            $pending  = $migrator->pending();
+
+            $checks[] = self::check(
+                $pending === [],
+                'Миграции',
+                $pending === [] ? 'все применены' : 'ждут: ' . implode(', ', $pending),
+                'Накатите: php bin/proton migrate'
+            );
+
+            $unknown = $migrator->unknown();
+
+            if ($unknown !== []) {
+                $checks[] = [
+                    'level' => self::WARN,
+                    'title' => 'Лишние миграции',
+                    'value' => implode(', ', $unknown),
+                    'hint'  => 'Эти миграции есть в базе, но не в коде — похоже на откат релиза',
+                ];
+            }
+
+            $checks[] = self::check(
+                User::query()->where('active', 1)->count() > 0,
+                'Пользователи',
+                (string) User::query()->count() . ' всего',
+                'Нет ни одного активного пользователя — войти будет некому'
+            );
+        } catch (Throwable $e) {
+            $checks[] = [
+                'level' => self::ERROR,
+                'title' => 'База данных',
+                'value' => $e->getMessage(),
+                'hint'  => 'Проверьте настройки DB_* в .env',
+            ];
+        }
+
+        return $checks;
+    }
+
+    /**
+     * @return array<int, array{level: string, title: string, value: string, hint: string}>
+     */
+    private static function application(): array
+    {
+        $checks = [];
+
+        $checks[] = self::check(
+            Crypto::hasKey(),
+            'Ключ приложения',
+            Crypto::hasKey() ? 'задан' : 'не задан',
+            'Создайте: php bin/proton app:key — без него не работают подписанные куки'
+        );
+
+        $checks[] = self::check(
+            !(bool) Config::get('app.debug', false),
+            'Режим отладки',
+            (bool) Config::get('app.debug', false) ? 'включён' : 'выключен',
+            'На бою APP_DEBUG должен быть false: иначе тексты ошибок видны посторонним',
+            self::WARN
+        );
+
+        $checks[] = self::check(
+            trim((string) Config::get('app.url', '')) !== '',
+            'Адрес приложения',
+            (string) Config::get('app.url', 'не задан'),
+            'APP_URL нужен ссылкам в письмах — без него они собираются неверно',
+            self::WARN
+        );
+
+        try {
+            $stats  = Queue::stats();
+            $failed = (int) ($stats[Queue::FAILED] ?? 0);
+
+            $checks[] = self::check(
+                $failed === 0,
+                'Очередь задач',
+                'в очереди ' . (int) ($stats[Queue::QUEUED] ?? 0) . ', с ошибкой ' . $failed,
+                'Разберите неудавшиеся задачи: php bin/proton queue:status',
+                self::WARN
+            );
+
+            $heartbeat = (int) Setting::get('worker:maintenance', '0');
+
+            if ($heartbeat > 0) {
+                $checks[] = self::check(
+                    time() - $heartbeat < 3600,
+                    'Воркер',
+                    'последний круг ' . date('d.m.Y H:i', $heartbeat),
+                    'Воркер молчит больше часа — проверьте службу',
+                    self::WARN
+                );
+            } else {
+                $checks[] = [
+                    'level' => self::WARN,
+                    'title' => 'Воркер',
+                    'value' => 'ни разу не запускался',
+                    'hint'  => 'Запустите: php bin/proton worker (или настройте службу)',
+                ];
+            }
+        } catch (Throwable $e) {
+            $checks[] = ['level' => self::WARN, 'title' => 'Очередь задач', 'value' => $e->getMessage(), 'hint' => ''];
+        }
+
+        $checks[] = [
+            'level' => self::OK,
+            'title' => 'Почта',
+            'value' => (string) Config::get('mail.driver', 'mail') . ', от ' . (string) Config::get('mail.from_email', 'не задан'),
+            'hint'  => '',
+        ];
+
+        return $checks;
+    }
+
+    /**
+     * @return array{level: string, title: string, value: string, hint: string}
+     */
+    private static function check(bool $passed, string $title, string $value, string $hint, string $failLevel = self::ERROR): array
+    {
+        return [
+            'level' => $passed ? self::OK : $failLevel,
+            'title' => $title,
+            'value' => $value,
+            'hint'  => $passed ? '' : $hint,
+        ];
+    }
+}

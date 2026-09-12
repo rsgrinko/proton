@@ -1,0 +1,21 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Models;
+
+use Rsgrinko\Proton\Database\Model\Model;
+
+/**
+ * {{class}}.
+ */
+final class {{class}} extends Model
+{
+    protected static string $table = '{{table}}';
+
+    /** Что можно заполнять массово: остальное ставит код, а не форма */
+    protected array $fillable = [];
+
+    /** Приведение типов: int, float, bool, json, datetime */
+    protected array $casts = [];
+}

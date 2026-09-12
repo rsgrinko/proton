@@ -1,0 +1,155 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Controllers\Web;
+
+use App\Models\{{class}};
+use Rsgrinko\Proton\Access\Scope;
+use Rsgrinko\Proton\Access\Viewer;
+use Rsgrinko\Proton\Http\Controller;
+use Rsgrinko\Proton\Http\Request;
+use Rsgrinko\Proton\Http\Response;
+use Rsgrinko\Proton\Support\Audit;
+
+/**
+ * Раздел «{{title}}»: список с поиском и страницами, карточка, форма, удаление.
+ *
+ * Область видимости уходит в запрос ($scope->apply), поэтому чужая запись сюда
+ * просто не приходит — «не найдено», а не «нет доступа».
+ */
+final class {{plural}}Controller extends Controller
+{
+    public function index(Request $request, Scope $scope): Response
+    {
+        $search = $request->text('q');
+
+        $query = $scope->apply({{class}}::query())
+            ->when($search, static function ($query, string $needle): void {
+                $query->whereLike('{{first}}', $needle);
+            })
+            ->orderBy('id', 'desc');
+
+        $page = $query->paginate($this->page($request), $this->perPage());
+
+        return $this->view('{{views}}/index', [
+            'active' => '{{route}}',
+            'page'   => $page,
+            'search' => $search,
+        ], '{{title}}');
+    }
+
+    public function create(): Response
+    {
+        return $this->view('{{views}}/form', [
+            'active' => '{{route}}',
+            'record' => new {{class}}(),
+        ], '{{title}}: новая запись');
+    }
+
+    public function store(Request $request, Viewer $viewer): Response
+    {
+        $data = $this->validate($request, $this->rules(), $this->labels());
+
+        $record = new {{class}}($data);
+
+        $record->setAttribute('user_id', $viewer->id());
+        $record->save();
+
+        Audit::created('{{route}}', $record->id(), '{{title}}: ' . (string) $record->raw('{{first}}'));
+
+        $this->flash('Сохранено');
+
+        return $this->redirect('{{route}}.show', ['id' => $record->id()]);
+    }
+
+    public function show(int $id, Scope $scope): Response
+    {
+        $record = $this->find($id, $scope);
+
+        return $this->view('{{views}}/show', [
+            'active' => '{{route}}',
+            'record' => $record,
+            'author' => $record->author,
+        ], (string) $record->raw('{{first}}'));
+    }
+
+    public function edit(int $id, Scope $scope): Response
+    {
+        return $this->view('{{views}}/form', [
+            'active' => '{{route}}',
+            'record' => $this->find($id, $scope),
+        ], '{{title}}: правка');
+    }
+
+    public function update(Request $request, int $id, Scope $scope): Response
+    {
+        $record = $this->find($id, $scope);
+
+        $data = $this->validate($request, $this->rules(), $this->labels());
+
+        $before = [{{before}}];
+
+        $record->fill($data);
+        $record->save();
+
+        Audit::updated('{{route}}', $record->id(), '{{title}}: ' . (string) $record->raw('{{first}}'), Audit::between($before, [
+{{after}}
+        ]));
+
+        $this->flash('Сохранено');
+
+        return $this->redirect('{{route}}.show', ['id' => $record->id()]);
+    }
+
+    public function delete(int $id, Scope $scope): Response
+    {
+        $record = $this->find($id, $scope);
+
+        $record->delete();
+
+        Audit::deleted('{{route}}', $record->id(), '{{title}}: ' . (string) $record->raw('{{first}}'));
+
+        $this->flash('Удалено');
+
+        return $this->redirect('{{route}}.index');
+    }
+
+    /**
+     * Правила проверки — одни и те же на создание и на правку.
+     *
+     * @return array<string, string>
+     */
+    private function rules(): array
+    {
+        return [
+{{rules}}
+        ];
+    }
+
+    /**
+     * Подписи полей: с ними сообщения об ошибках читаются человеком.
+     *
+     * @return array<string, string>
+     */
+    private function labels(): array
+    {
+        return [
+{{labels}}
+        ];
+    }
+
+    /**
+     * Запись с оглядкой на область видимости.
+     */
+    private function find(int $id, Scope $scope): {{class}}
+    {
+        /** @var {{class}}|null $record */
+        $record = $scope->apply({{class}}::query())->where('id', $id)->first();
+
+        /** @var {{class}} $found */
+        $found = $this->require($record, '{{route}}.index', 'Запись не найдена');
+
+        return $found;
+    }
+}

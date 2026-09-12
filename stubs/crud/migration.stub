@@ -1,0 +1,29 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Migrations;
+
+use Rsgrinko\Proton\Database\Migration;
+use Rsgrinko\Proton\Database\Schema\Blueprint;
+
+/**
+ * Таблица раздела «{{title}}».
+ */
+final class Create{{plural}} extends Migration
+{
+    public function up(): void
+    {
+        $this->create('{{table}}', function (Blueprint $table): void {
+            $table->id();
+            $table->foreignId('user_id');
+{{schema}}
+            $table->timestamps();{{softSchema}}
+        });
+    }
+
+    public function down(): void
+    {
+        $this->drop('{{table}}');
+    }
+}

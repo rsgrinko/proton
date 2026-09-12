@@ -1,0 +1,290 @@
+<?php
+
+declare(strict_types=1);
+
+/**
+ * Настоящие запросы к ядру: обход всех GET-страниц, доступ, токен форм и API.
+ *
+ * Так ловится то, что раньше проверялось только руками: забытое имя маршрута,
+ * отвалившаяся прослойка, ошибка во вьюхе.
+ */
+
+use App\Models\Note;
+use Rsgrinko\Proton\Access\Permission;
+use Rsgrinko\Proton\Auth\Auth;
+use Rsgrinko\Proton\Auth\Csrf;
+use Rsgrinko\Proton\Http\Kernel;
+use Rsgrinko\Proton\Http\Request;
+use Rsgrinko\Proton\Http\Response;
+use Rsgrinko\Proton\Models\ApiToken;
+use Rsgrinko\Proton\Models\Role;
+use Rsgrinko\Proton\Models\User;
+
+/**
+ * Запрос к ядру от лица пользователя (или гостя, если его нет).
+ *
+ * @param array<string, mixed> $body
+ * @param array<string, mixed> $query
+ */
+function httpRequest(string $method, string $path, ?User $user = null, array $body = [], array $query = [], array $headers = []): Response
+{
+    Auth::forget();
+    Auth::actAs($user);
+
+    if (in_array(strtoupper($method), ['POST', 'PUT', 'PATCH', 'DELETE'], true) && !isset($body[Csrf::FIELD])) {
+        $body[Csrf::FIELD] = Csrf::token();
+    }
+
+    $response = (new Kernel())->handle(Request::create($method, $path, $body, $query, $headers));
+
+    Auth::actAs(null);
+    Auth::forget();
+
+    return $response;
+}
+
+/**
+ * Администратор для проверок.
+ */
+function httpAdmin(): User
+{
+    static $user = null;
+
+    if ($user instanceof User) {
+        return $user;
+    }
+
+    $user = User::register('http_admin_' . bin2hex(random_bytes(3)), 'секрет123', [
+        'email'   => 'admin' . bin2hex(random_bytes(3)) . '@example.com',
+        'role_id' => Role::admin()?->id() ?? 0,
+    ]);
+
+    afterTests(static function () use ($user): void {
+        Note::query()->withTrashed()->where('user_id', $user->id())->forceDelete();
+        ApiToken::query()->where('user_id', $user->id())->forceDelete();
+        $user->forceDelete();
+    });
+
+    return $user;
+}
+
+/**
+ * Обычный пользователь: свои записи, без управления сервисом.
+ */
+function httpUser(): User
+{
+    static $user = null;
+
+    if ($user instanceof User) {
+        return $user;
+    }
+
+    $role = Role::query()->where('is_system', 0)->first();
+
+    $user = User::register('http_user_' . bin2hex(random_bytes(3)), 'секрет123', [
+        'email'   => 'user' . bin2hex(random_bytes(3)) . '@example.com',
+        'role_id' => $role?->id() ?? 0,
+    ]);
+
+    afterTests(static function () use ($user): void {
+        Note::query()->withTrashed()->where('user_id', $user->id())->forceDelete();
+        $user->forceDelete();
+    });
+
+    return $user;
+}
+
+test('http: гостя уводит на вход, а не показывает страницу', function (): void {
+    // Пользователь в базе нужен: пока их нет, всё уводит на первый запуск
+    httpAdmin();
+
+    $response = httpRequest('GET', '/');
+
+    assertStatus(302, $response);
+    assertContains('/login', $response->header('Location'));
+});
+
+test('http: страницы для гостя открыты', function (): void {
+    httpAdmin();
+
+    foreach (['/login', '/register', '/password/forgot'] as $path) {
+        assertStatus(200, httpRequest('GET', $path), 'страница ' . $path);
+    }
+});
+
+test('http: пока приложение не установлено, всё уводит в установщик', function (): void {
+    withOwnDatabase(static function (): void {
+        $response = (new Kernel())->handle(Request::create('GET', '/login'));
+
+        assertStatus(302, $response);
+        assertContains('/install', $response->header('Location'));
+
+        // Сам установщик при этом открыт — иначе им никто не воспользуется
+        assertStatus(200, (new Kernel())->handle(Request::create('GET', '/install')));
+    });
+});
+
+test('http: установленное приложение установщик обратно не пускает', function (): void {
+    httpAdmin();
+
+    $response = (new Kernel())->handle(Request::create('GET', '/install'));
+
+    assertStatus(302, $response, 'мастером не должен воспользоваться прохожий');
+    assertContains('/', $response->header('Location'));
+});
+
+test('http: вошедшему форма входа не нужна', function (): void {
+    assertStatus(302, httpRequest('GET', '/login', httpAdmin()));
+});
+
+test('http: все страницы администратора отвечают', function (): void {
+    $note = Note::create(['title' => 'Для обхода страниц']);
+
+    $note->forceFill(['user_id' => httpAdmin()->id()])->save();
+
+    $paths = [
+        '/', '/profile',
+        '/notes', '/notes/new', '/notes/' . $note->id(), '/notes/' . $note->id() . '/edit',
+        '/admin', '/admin/users', '/admin/users/new', '/admin/users/' . httpAdmin()->id(),
+        '/admin/roles', '/admin/roles/new', '/admin/roles/' . (Role::admin()?->id() ?? 1),
+        '/admin/tokens', '/admin/audit', '/admin/logs', '/admin/system',
+    ];
+
+    foreach ($paths as $path) {
+        assertStatus(200, httpRequest('GET', $path, httpAdmin()), 'страница ' . $path);
+    }
+});
+
+test('http: обычный пользователь не попадает в служебные разделы', function (): void {
+    foreach (['/admin', '/admin/users', '/admin/roles', '/admin/tokens', '/admin/audit', '/admin/logs', '/admin/system'] as $path) {
+        assertStatus(403, httpRequest('GET', $path, httpUser()), 'закрытая страница ' . $path);
+    }
+
+    // А свои разделы — открыты
+    assertStatus(200, httpRequest('GET', '/notes', httpUser()));
+    assertStatus(200, httpRequest('GET', '/profile', httpUser()));
+});
+
+test('http: чужая запись для обычного пользователя не существует', function (): void {
+    $note = Note::create(['title' => 'Чужая заметка']);
+
+    $note->forceFill(['user_id' => httpAdmin()->id()])->save();
+
+    $response = httpRequest('GET', '/notes/' . $note->id(), httpUser());
+
+    // Именно «не найдено», а не «нет доступа»: постороннему знать нечего
+    assertStatus(302, $response, 'уводит обратно в список');
+    assertContains('/notes', $response->header('Location'));
+
+    // И в списке чужой заметки тоже нет
+    $list = httpRequest('GET', '/notes', httpUser());
+
+    assertNotContains('Чужая заметка', $list->body());
+});
+
+test('http: форма без токена ничего не меняет', function (): void {
+    $before = Note::query()->where('user_id', httpAdmin()->id())->count();
+
+    $response = httpRequest('POST', '/notes/new', httpAdmin(), [
+        Csrf::FIELD => 'подделка',
+        'title'     => 'Без токена',
+    ]);
+
+    assertStatus(403, $response);
+    assertSame($before, Note::query()->where('user_id', httpAdmin()->id())->count(), 'запись не появилась');
+});
+
+test('http: форма с токеном создаёт запись и пишет в журнал', function (): void {
+    $response = httpRequest('POST', '/notes/new', httpAdmin(), ['title' => 'Через форму', 'body' => 'тело']);
+
+    assertStatus(302, $response);
+
+    $note = assertNotNull(Note::query()->where('title', 'Через форму')->first());
+
+    assertSame(httpAdmin()->id(), (int) $note->raw('user_id'));
+
+    $entry = Rsgrinko\Proton\Models\AuditEntry::query()->where('entity', 'note')->orderBy('id', 'desc')->first();
+
+    assertNotNull($entry, 'действие должно попасть в журнал');
+});
+
+test('http: неверные данные возвращают человека на форму', function (): void {
+    $response = httpRequest('POST', '/notes/new', httpAdmin(), ['title' => '']);
+
+    assertStatus(302, $response, 'без обязательного поля запись не создаётся');
+    assertSame(0, Note::query()->where('title', '')->count());
+});
+
+test('http: неизвестный адрес — 404', function (): void {
+    assertStatus(404, httpRequest('GET', '/нет-такой-страницы', httpAdmin()));
+});
+
+test('api: без ключа не пускает, с ключом отвечает', function (): void {
+    $issued = ApiToken::issue('тест', httpAdmin()->id());
+
+    assertStatus(401, httpRequest('GET', '/api/v1/notes'));
+
+    $response = httpRequest('GET', '/api/v1/me', null, [], [], ['authorization' => 'Bearer ' . $issued['key']]);
+
+    assertStatus(200, $response);
+    assertContains((string) httpAdmin()->login, $response->body());
+});
+
+test('api: отключённый ключ не работает', function (): void {
+    $issued = ApiToken::issue('отключённый', httpAdmin()->id());
+
+    $issued['token']->forceFill(['active' => 0])->save();
+
+    assertStatus(401, httpRequest('GET', '/api/v1/notes', null, [], [], ['authorization' => 'Bearer ' . $issued['key']]));
+});
+
+test('api: ключ, привязанный к адресу, чужой адрес не пускает', function (): void {
+    $issued = ApiToken::issue('по адресу', httpAdmin()->id(), '10.0.0.0/8');
+
+    // Запрос идёт с неизвестного адреса — в тестах это «unknown»
+    assertStatus(403, httpRequest('GET', '/api/v1/notes', null, [], [], ['authorization' => 'Bearer ' . $issued['key']]));
+});
+
+test('api: заметки создаются, читаются и удаляются', function (): void {
+    $issued  = ApiToken::issue('crud', httpAdmin()->id());
+    $headers = ['authorization' => 'Bearer ' . $issued['key'], 'content-type' => 'application/json'];
+
+    $created = httpRequest('POST', '/api/v1/notes', null, ['title' => 'Через API'], [], $headers);
+
+    assertStatus(201, $created);
+
+    $payload = json_decode($created->body(), true);
+    $id      = (int) ($payload['data']['id'] ?? 0);
+
+    assertTrue($id > 0, 'в ответе должен быть номер записи');
+
+    assertStatus(200, httpRequest('GET', '/api/v1/notes/' . $id, null, [], [], $headers));
+    assertStatus(200, httpRequest('PATCH', '/api/v1/notes/' . $id, null, ['title' => 'Изменено'], [], $headers));
+    assertStatus(200, httpRequest('DELETE', '/api/v1/notes/' . $id, null, [], [], $headers));
+    assertStatus(404, httpRequest('GET', '/api/v1/notes/' . $id, null, [], [], $headers));
+});
+
+test('api: здоровье отвечает без ключа', function (): void {
+    $response = httpRequest('GET', '/api/v1/health');
+
+    assertStatus(200, $response);
+    assertContains('"status": "ok"', $response->body());
+});
+
+test('api: ошибки приходят в едином формате', function (): void {
+    $response = httpRequest('GET', '/api/v1/notes');
+
+    $payload = json_decode($response->body(), true);
+
+    assertTrue(isset($payload['error']['message']), 'у ошибки есть message');
+    assertSame(401, (int) $payload['error']['status']);
+});
+
+test('права: реестр знает и свои права приложения', function (): void {
+    assertTrue(Permission::known('notes.view'), 'право из config/permissions.php');
+    assertTrue(Permission::known(Permission::USERS_MANAGE));
+    assertFalse(Permission::known('такого.права.нет'));
+
+    assertTrue(in_array('notes.view', Permission::user(), true), 'обычному пользователю раздел доступен');
+    assertFalse(in_array(Permission::DATA_ALL, Permission::user(), true), 'чужие данные — нет');
+});

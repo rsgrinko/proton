@@ -1,0 +1,22 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+/**
+ * Консольная утилита Proton: php bin/proton <команда>.
+ *
+ * Список команд — php bin/proton help.
+ */
+
+if (PHP_SAPI !== 'cli') {
+    http_response_code(403);
+
+    exit('Эта точка входа только для командной строки');
+}
+
+require dirname(__DIR__) . '/bootstrap.php';
+
+use Rsgrinko\Proton\Console\Application;
+
+exit((new Application())->run($argv));

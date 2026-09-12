@@ -1,0 +1,50 @@
+<?php
+
+declare(strict_types=1);
+
+/**
+ * Карточка: {{title}}.
+ *
+ * @var \App\Models\{{class}} $record
+ * @var \Rsgrinko\Proton\Models\User|null $author
+ */
+
+use Rsgrinko\Proton\View\View;
+
+$props = [
+{{props}}
+];
+?>
+<div class="row">
+    <h1 style="margin: 0;"><?= View::e((string) $record->raw('{{first}}')) ?></h1>
+    <span class="spacer"></span>
+
+    <?php if (View::can('{{route}}.manage')) { ?>
+        <a class="btn" href="<?= View::e(View::route('{{route}}.edit', ['id' => $record->id()])) ?>">Править</a>
+
+        <form method="post" action="<?= View::e(View::route('{{route}}.delete', ['id' => $record->id()])) ?>">
+            <?= View::csrf() ?>
+            <button type="submit" class="danger">Удалить</button>
+        </form>
+    <?php } ?>
+</div>
+
+<div class="card" style="margin-top: 16px;">
+    <dl class="props">
+        <?php foreach ($props as $label => $value) { ?>
+            <dt><?= View::e((string) $label) ?></dt>
+            <dd><?= View::e((string) $value) === '' ? '—' : View::e((string) $value) ?></dd>
+        <?php } ?>
+
+        <dt>Автор</dt>
+        <dd><?= View::e($author === null ? '—' : (string) $author->login) ?></dd>
+
+        <dt>Создано</dt>
+        <dd><?= View::e(View::date((string) $record->raw('created_at'))) ?></dd>
+
+        <dt>Изменено</dt>
+        <dd><?= View::e(View::date((string) $record->raw('updated_at'))) ?></dd>
+    </dl>
+</div>
+
+<p><a href="<?= View::e(View::route('{{route}}.index')) ?>">&larr; Ко всем записям</a></p>

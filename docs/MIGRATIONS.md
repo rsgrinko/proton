@@ -1,0 +1,110 @@
+# Миграции
+
+Схему меняют только миграции. Файл на миграцию в каталоге `migrations/`, имя —
+`20260912100000_create_notes.php`, внутри класс `CreateNotes` в namespace `App\Migrations`.
+
+**Имя файла — это и есть имя миграции в таблице `migrations`**: переименованный файл
+считается новой миграцией и применится второй раз. Реестра нет, `Migrator` подхватывает
+файлы сам и идёт по ним в порядке имён, то есть по времени создания.
+
+```bash
+php bin/proton make:migration create_articles
+php bin/proton migrate
+php bin/proton migrate --pretend      # только показать запросы
+php bin/proton migrate:status         # что применено, что ждёт, чего нет в коде
+php bin/proton migrate:rollback       # откатить последнюю пачку
+```
+
+## Как пишется
+
+Таблица описывается не строками SQL, а объявлением: типы отвлечённые, в SQL их
+переводит `Schema\Types` — миграция про диалект не знает.
+
+```php
+final class CreateArticles extends Migration
+{
+    public function up(): void
+    {
+        $this->create('articles', function (Blueprint $table): void {
+            $table->id();
+            $table->foreignId('user_id');            // колонка + индекс
+            $table->string('title', 191);
+            $table->text('body')->nullable();
+            $table->boolean('published')->default(0);
+            $table->decimal('price', 12, 2)->default(0);
+            $table->dateTime('published_at')->nullable();
+            $table->timestamps();                    // created_at, updated_at
+            $table->softDeletes();                   // deleted_at
+
+            $table->unique('idx_articles_slug', 'slug');
+            $table->index('idx_articles_pub', ['published', 'published_at']);
+            $table->fulltext('ft_articles', 'title'); // только MySQL, в SQLite пропускается
+        });
+    }
+
+    public function down(): void
+    {
+        $this->drop('articles');
+    }
+}
+```
+
+Правка существующей таблицы:
+
+```php
+$this->table('articles', function (Blueprint $table): void {
+    $table->string('slug', 191)->default('');
+    $table->index('idx_articles_slug2', 'slug');
+    $table->dropColumn('old_field');
+    $table->dropIndex('idx_old');
+});
+```
+
+Порядок шагов выдержан: индексы снимаются раньше, чем уходят их колонки, а новый
+индекс строится по уже добавленной.
+
+Свой SQL — перенос данных, стартовые записи — через `statement()`, **с параметрами,
+а не склейкой строк**:
+
+```php
+$this->statement('UPDATE articles SET slug = :slug WHERE id = :id', ['slug' => $slug, 'id' => $id]);
+```
+
+Ссылаться на классы приложения из миграции не стоит: миграция должна делать одно
+и то же и через год, а код к тому времени изменится.
+
+## Откат
+
+У каждой миграции есть `down()`, и он обязан честно отменять `up()` — это проверяется
+тестом, который накатывает всё, откатывает и накатывает снова. `migrate` кладёт всё
+применённое за раз в одну пачку, `migrate:rollback` снимает последнюю пачку целиком.
+
+**Откат на живой базе — крайняя мера**: он удаляет колонки вместе с данными.
+Команда спрашивает подтверждение (`--force` его пропускает).
+
+## Что сделано, чтобы не чинить базу руками
+
+- **Шаг знает, выполнен ли он.** Колонка добавляется, если её нет; индекс строится,
+  если его нет. Поэтому миграция, упавшая на середине в MySQL (там каждый `ALTER`
+  коммитится сам), доезжает следующим `migrate`, а не упирается в «Duplicate column
+  name». Пропущенные шаги команда печатает списком.
+- **Шаг с данными идемпотентным не станет сам.** Перенос пишется так, чтобы повтор
+  ничего не задвоил: в `20260912100000_create_core_tables` роли сначала ищутся по имени.
+- **Накат и откат идут под общей блокировкой** (`GET_LOCK` в MySQL, `flock` в SQLite).
+  Два процесса разом — это дважды применённая миграция: между проверкой «применена?»
+  и записью о ней успевает влезть второй.
+- **Миграция выполняется в транзакции.** В SQLite это даёт настоящую атомарность,
+  в MySQL — хотя бы отсутствие записи о наполовину применённой миграции.
+- **Ошибка дополняется именем миграции** — иначе на бою приходится гадать, на чём встал накат.
+
+## Режим «на словах»
+
+`migrate --pretend` ничего не выполняет, а печатает запросы. Шагу с данными об этом
+нужно знать: таблиц в базе ещё нет, и запрос «а нет ли уже такой записи» упадёт.
+Проверяется методом `pretending()`:
+
+```php
+$exists = $this->pretending()
+    ? null
+    : $this->db()->selectOne('SELECT id FROM roles WHERE name = :name', ['name' => $name]);
+```

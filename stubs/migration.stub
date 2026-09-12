@@ -1,0 +1,32 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Migrations;
+
+use Rsgrinko\Proton\Database\Migration;
+use Rsgrinko\Proton\Database\Schema\Blueprint;
+
+/**
+ * {{class}}.
+ */
+final class {{class}} extends Migration
+{
+    public function up(): void
+    {
+        $this->create('{{table}}', function (Blueprint $table): void {
+            $table->id();
+            $table->string('title', 191);
+            $table->timestamps();
+        });
+    }
+
+    /**
+     * Откат обязан честно отменять up(): это проверяется тестом, который
+     * накатывает всё, откатывает и накатывает снова.
+     */
+    public function down(): void
+    {
+        $this->drop('{{table}}');
+    }
+}

@@ -1,0 +1,32 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Models;
+
+use Rsgrinko\Proton\Database\Model\Model;
+use Rsgrinko\Proton\Database\Model\Relations\BelongsTo;
+use Rsgrinko\Proton\Models\User;
+
+/**
+ * {{title}}.
+ */
+final class {{class}} extends Model
+{
+    protected static string $table = '{{table}}';
+
+    /** Массово заполняем только это: остальное ставит код, а не форма */
+    protected array $fillable = [{{fillable}}];
+
+    protected array $casts = [
+{{casts}}
+    ];
+{{soft}}
+    /**
+     * Кто завёл запись — по этому полю работает область видимости.
+     */
+    public function author(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'user_id');
+    }
+}

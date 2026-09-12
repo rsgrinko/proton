@@ -1,0 +1,79 @@
+<?php
+
+declare(strict_types=1);
+
+/**
+ * Список: {{title}}.
+ *
+ * @var array{items: array<int, \App\Models\{{class}}>, total: int, page: int, pages: int, per_page: int} $page
+ * @var string $search
+ */
+
+use Rsgrinko\Proton\Support\Str;
+use Rsgrinko\Proton\View\View;
+?>
+<div class="row">
+    <h1 style="margin: 0;">{{title}}</h1>
+    <span class="spacer"></span>
+
+    <?php if (View::can('{{route}}.manage')) { ?>
+        <a class="btn primary" href="<?= View::e(View::route('{{route}}.create')) ?>">Добавить</a>
+    <?php } ?>
+</div>
+
+<div class="card" style="margin-top: 16px;">
+    <form method="get" action="<?= View::e(View::route('{{route}}.index')) ?>">
+        <div class="filters">
+            <label>
+                <span>Поиск: {{firstLabel}}</span>
+                <input type="search" name="q" value="<?= View::e($search) ?>">
+            </label>
+        </div>
+
+        <div class="filter-actions row">
+            <button type="submit" class="primary">Искать</button>
+            <?php if ($search !== '') { ?>
+                <a class="btn" href="<?= View::e(View::route('{{route}}.index')) ?>">Сбросить</a>
+            <?php } ?>
+            <span class="spacer"></span>
+            <span class="muted small">Всего: <?= (int) $page['total'] ?></span>
+        </div>
+    </form>
+</div>
+
+<div class="card">
+    <?php if ($page['items'] === []) { ?>
+        <p class="muted">Пока ничего нет.</p>
+    <?php } else { ?>
+        <div class="table-wrap">
+            <table class="list">
+                <tr class="head">
+                    <th>{{firstLabel}}</th>{{heads}}
+                    <th class="hide-sm">Изменено</th>
+                    <th></th>
+                </tr>
+
+                <?php foreach ($page['items'] as $record) { ?>
+                    <tr>
+                        <td>
+                            <a href="<?= View::e(View::route('{{route}}.show', ['id' => $record->id()])) ?>"><?= View::e((string) $record->raw('{{first}}')) ?></a>
+                        </td>{{cells}}
+                        <td class="hide-sm muted small"><?= View::e(View::ago((string) $record->raw('updated_at'))) ?></td>
+                        <td class="right">
+                            <?php if (View::can('{{route}}.manage')) { ?>
+                                <a class="btn small" href="<?= View::e(View::route('{{route}}.edit', ['id' => $record->id()])) ?>">Править</a>
+                            <?php } ?>
+                        </td>
+                    </tr>
+                <?php } ?>
+            </table>
+        </div>
+
+        <?= View::partial('pagination', [
+            'route'  => '{{route}}.index',
+            'page'   => $page['page'],
+            'pages'  => $page['pages'],
+            'params' => ['q' => $search],
+        ]) ?>
+    <?php } ?>
+</div>

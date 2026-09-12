@@ -1,0 +1,31 @@
+<?php
+
+declare(strict_types=1);
+
+/**
+ * Форма: {{title}}. Одна на создание и на правку.
+ *
+ * @var \App\Models\{{class}} $record
+ */
+
+use Rsgrinko\Proton\View\View;
+
+$isNew  = !$record->existsInDatabase();
+$action = $isNew
+    ? View::route('{{route}}.create')
+    : View::route('{{route}}.edit', ['id' => $record->id()]);
+?>
+<h1><?= $isNew ? 'Новая запись' : 'Правка записи' ?></h1>
+
+<div class="card">
+    <form method="post" action="<?= View::e($action) ?>">
+        <?= View::csrf() ?>
+
+{{form}}
+
+        <div class="row">
+            <button type="submit" class="primary">Сохранить</button>
+            <a class="btn" href="<?= View::e(View::route('{{route}}.index')) ?>">Отмена</a>
+        </div>
+    </form>
+</div>

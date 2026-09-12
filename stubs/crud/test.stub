@@ -1,0 +1,59 @@
+<?php
+
+declare(strict_types=1);
+
+/**
+ * Раздел «{{title}}»: список, создание, правка, удаление и чужая запись.
+ *
+ * Проверяется настоящим ядром — с маршрутами, правами и токеном формы.
+ * Помощники httpRequest() и httpAdmin() живут в tests/HttpTest.php.
+ */
+
+use App\Models\{{class}};
+
+test('{{route}}: список открывается', function (): void {
+    $admin = httpAdmin();
+
+    assertStatus(200, httpRequest('GET', '/{{route}}', $admin));
+});
+
+test('{{route}}: запись заводится, правится и удаляется', function (): void {
+    $admin = httpAdmin();
+
+    $response = httpRequest('POST', '/{{route}}/new', $admin, ['{{first}}' => {{testValue}}]);
+
+    assertStatus(302, $response, 'после сохранения — переход на карточку');
+
+    /** @var {{class}}|null $record */
+    $record = {{class}}::query()->where('user_id', $admin->id())->orderBy('id', 'desc')->first();
+
+    assertNotNull($record, 'запись должна появиться в базе');
+
+    assertStatus(200, httpRequest('GET', '/{{route}}/' . $record->id(), $admin));
+    assertStatus(200, httpRequest('GET', '/{{route}}/' . $record->id() . '/edit', $admin));
+
+    assertStatus(302, httpRequest('POST', '/{{route}}/' . $record->id() . '/edit', $admin, [
+        '{{first}}' => {{testValue}},
+    ]));
+
+    assertStatus(302, httpRequest('POST', '/{{route}}/' . $record->id() . '/delete', $admin));
+
+    // Запись убрана из списков; если мягкое удаление выключено — её нет вовсе
+    assertNull({{class}}::query()->where('id', $record->id())->first());
+
+    {{class}}::query()->withTrashed()->where('id', $record->id())->forceDelete();
+});
+
+test('{{route}}: форма без токена ничего не меняет', function (): void {
+    $admin = httpAdmin();
+
+    $before = {{class}}::query()->count();
+
+    $response = httpRequest('POST', '/{{route}}/new', $admin, [
+        '{{first}}'                            => {{testValue}},
+        Rsgrinko\Proton\Auth\Csrf::FIELD => 'подделка',
+    ]);
+
+    assertStatus(403, $response);
+    assertSame($before, {{class}}::query()->count(), 'без токена запись не заводится');
+});

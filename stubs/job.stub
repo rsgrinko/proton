@@ -1,0 +1,24 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Jobs;
+
+use Rsgrinko\Proton\Queue\Job;
+
+/**
+ * {{class}}.
+ *
+ * Задача обязана переживать повтор: воркер может выполнить её второй раз,
+ * если процесс упал между работой и отметкой об успехе.
+ */
+final class {{class}} extends Job
+{
+    /**
+     * @param array<string, mixed> $payload
+     */
+    public function handle(array $payload): void
+    {
+        // здесь работа
+    }
+}
