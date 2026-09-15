@@ -75,4 +75,6 @@ use Rsgrinko\Proton\View\View;
     </div>
 </div>
 
+<?= View::partial('history', ['entity' => 'note', 'id' => $note->id()]) ?>
+
 <p><a href="<?= View::e(View::route('notes.index')) ?>">← ко всем заметкам</a></p>

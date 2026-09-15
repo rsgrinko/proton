@@ -108,3 +108,7 @@ $hint   = $isNew ? 'пусто — придумаем сами' : 'пусто �
         </form>
     </div>
 <?php } ?>
+
+<?php if ($user->id() > 0) { ?>
+    <?= View::partial('history', ['entity' => 'user', 'id' => $user->id()]) ?>
+<?php } ?>

@@ -30,6 +30,9 @@ final class User extends Model
         'role_id' => 'int',
     ];
 
+    /** Мягкое удаление: человека возвращают из корзины, пока его не добили */
+    protected bool $softDelete = true;
+
     public function role(): BelongsTo
     {
         return $this->belongsTo(Role::class, 'role_id');

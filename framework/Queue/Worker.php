@@ -16,6 +16,7 @@ use Rsgrinko\Proton\Notifications\Notify;
 use Rsgrinko\Proton\RateLimit\RateLimiter;
 use Rsgrinko\Proton\Support\Config;
 use Rsgrinko\Proton\Support\Logger;
+use Rsgrinko\Proton\Support\Trash;
 use Rsgrinko\Proton\Support\RequestId;
 use Throwable;
 
@@ -237,6 +238,7 @@ final class Worker
             WebhookDelivery::purge((int) Config::get('webhooks.keep_days', 14));
             SecurityEvent::purge((int) Config::get('security.keep_days', 60));
             BlockedIp::purgeExpired();
+            Trash::purge((int) Config::get('trash.keep_days', 30));
             Notify::purge();
 
             (new Logger('app'))->purge();

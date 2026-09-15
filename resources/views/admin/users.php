@@ -26,9 +26,22 @@ use Rsgrinko\Proton\View\View;
     <?php if ($page['items'] === []) { ?>
         <p class="muted">Ничего не нашлось.</p>
     <?php } else { ?>
+        <form method="post" action="<?= View::e(View::route('admin.users.bulk')) ?>">
+            <?= View::csrf() ?>
+
+            <?= View::partial('bulk', [
+                'actions' => [
+                    'enable'  => 'включить',
+                    'disable' => 'выключить',
+                    'delete'  => 'удалить (в корзину)',
+                ],
+                'confirm' => 'Выполнить действие над отмеченными пользователями?',
+            ]) ?>
+
         <div class="table-wrap">
             <table class="list">
                 <tr class="head">
+                    <th></th>
                     <th><?= View::partial('sort', ['filters' => $filters, 'route' => 'admin.users', 'column' => 'login', 'label' => 'Логин']) ?></th>
                     <th class="hide-sm">Имя</th>
                     <th class="hide-sm">Почта</th>
@@ -39,6 +52,7 @@ use Rsgrinko\Proton\View\View;
 
                 <?php foreach ($page['items'] as $user) { ?>
                     <tr>
+                        <td><input type="checkbox" name="ids[]" value="<?= $user->id() ?>" data-check-item></td>
                         <td><a href="<?= View::e(View::route('admin.users.show', ['id' => $user->id()])) ?>"><?= View::e((string) $user->login) ?></a></td>
                         <td class="hide-sm"><?= View::e((string) $user->name) ?></td>
                         <td class="hide-sm muted small"><?= View::e((string) $user->email) ?></td>
@@ -55,6 +69,8 @@ use Rsgrinko\Proton\View\View;
                 <?php } ?>
             </table>
         </div>
+
+        </form>
 
         <?= View::partial('pagination', [
             'route'  => 'admin.users',

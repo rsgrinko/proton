@@ -231,6 +231,76 @@ final class UsersController extends Controller
     }
 
     /**
+     * Массовое действие над отмеченными: включить, выключить, удалить.
+     *
+     * Себя в список не берём ни при каком действии: выключить или удалить
+     * самого себя — верный способ остаться без панели.
+     */
+    public function bulk(Request $request, User $user): Response
+    {
+        $data = $this->validate($request, [
+            'action' => 'required|in:enable,disable,delete',
+        ], ['action' => 'Действие']);
+
+        $ids = array_values(array_filter(array_map('intval', (array) $request->input('ids', []))));
+        $ids = array_values(array_diff($ids, [$user->id()]));
+
+        if ($ids === []) {
+            $this->flash('Не отмечено ни одной записи (себя массовые действия не трогают)', 'error');
+
+            return $this->redirect('admin.users');
+        }
+
+        $action = (string) $data['action'];
+        $done   = 0;
+
+        /** @var User $target */
+        foreach (User::query()->whereIn('id', $ids)->get() as $target) {
+            // Последнего активного не выключаем и не удаляем: войти станет некому
+            if ($action !== 'enable' && $target->isActive() && User::query()->where('active', 1)->count() <= 1) {
+                continue;
+            }
+
+            match ($action) {
+                'enable'  => $target->forceFill(['active' => 1])->save(),
+                'disable' => $this->disable($target),
+                default   => $this->remove($target),
+            };
+
+            $done++;
+        }
+
+        $labels = ['enable' => 'включено', 'disable' => 'выключено', 'delete' => 'удалено'];
+
+        Audit::action('user', 0, 'массовое действие: ' . $labels[$action] . ' ' . $done);
+
+        $this->flash(
+            $done > 0 ? 'Готово, ' . $labels[$action] . ': ' . $done : 'Ничего не изменилось',
+            $done > 0 ? 'ok' : 'error'
+        );
+
+        return $this->redirect('admin.users');
+    }
+
+    /**
+     * Выключить: по старой куке отключённый доходить до страниц не должен.
+     */
+    private function disable(User $target): void
+    {
+        $target->forceFill(['active' => 0])->save();
+        $target->logoutEverywhere();
+    }
+
+    /**
+     * Удалить мягко — запись уходит в корзину.
+     */
+    private function remove(User $target): void
+    {
+        $target->logoutEverywhere();
+        $target->delete();
+    }
+
+    /**
      * Роли для списка: id => название.
      *
      * @return array<int, string>

@@ -20,6 +20,7 @@ use App\Controllers\Admin\SecurityController;
 use App\Controllers\Admin\SettingsController;
 use App\Controllers\Admin\SystemController;
 use App\Controllers\Admin\TokensController;
+use App\Controllers\Admin\TrashController;
 use App\Controllers\Admin\UsersController;
 use App\Controllers\Admin\WebhooksController;
 use Rsgrinko\Proton\Access\Permission;
@@ -39,6 +40,7 @@ return static function (Router $router): void {
             $router->get('/{id:\d+}', [UsersController::class, 'show'])->name('admin.users.show');
             $router->post('/{id:\d+}', [UsersController::class, 'update']);
             $router->post('/{id:\d+}/delete', [UsersController::class, 'delete'])->name('admin.users.delete');
+            $router->post('/bulk', [UsersController::class, 'bulk'])->name('admin.users.bulk');
         });
 
         $router->group(['prefix' => '/roles', 'middleware' => 'can:' . Permission::ROLES_MANAGE], function (Router $router): void {
@@ -95,6 +97,14 @@ return static function (Router $router): void {
             $router->get('/export', [SecurityController::class, 'export'])->name('admin.security.export');
             $router->post('/block', [SecurityController::class, 'block'])->name('admin.security.block');
             $router->post('/unblock', [SecurityController::class, 'unblock'])->name('admin.security.unblock');
+        });
+
+        // Корзина: разделы объявляет реестр, право проверяется внутри — у каждого
+        // раздела оно своё
+        $router->group(['prefix' => '/trash'], function (Router $router): void {
+            $router->get('', [TrashController::class, 'index'])->name('admin.trash');
+            $router->post('/restore', [TrashController::class, 'restore'])->name('admin.trash.restore');
+            $router->post('/destroy', [TrashController::class, 'destroy'])->name('admin.trash.destroy');
         });
 
         $router->get('/audit', [AuditController::class, 'index'])

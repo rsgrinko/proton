@@ -23,6 +23,9 @@ final class Role extends Model
         'is_system'   => 'bool',
     ];
 
+    /** Мягкое удаление: роль возвращается из корзины вместе с правами */
+    protected bool $softDelete = true;
+
     /**
      * Права роли.
      *

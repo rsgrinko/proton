@@ -29,6 +29,9 @@ final class Webhook extends Model
 
     protected array $casts = ['active' => 'bool', 'events' => 'json', 'failures' => 'int', 'last_status' => 'int'];
 
+    /** Мягкое удаление: подписку можно вернуть, журнал доставок остаётся */
+    protected bool $softDelete = true;
+
     /** Все события сразу: новое событие реестра подписка получит без правки */
     public const ALL_EVENTS = '*';
 

@@ -72,3 +72,7 @@ $granted = $role->permissions();
         </form>
     </div>
 <?php } ?>
+
+<?php if ($role->id() > 0) { ?>
+    <?= View::partial('history', ['entity' => 'role', 'id' => $role->id()]) ?>
+<?php } ?>

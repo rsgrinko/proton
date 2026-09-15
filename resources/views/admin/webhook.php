@@ -197,3 +197,7 @@ $all      = in_array(Webhook::ALL_EVENTS, $selected, true);
         <?php } ?>
     </div>
 <?php } ?>
+
+<?php if ($webhook->id() > 0) { ?>
+    <?= View::partial('history', ['entity' => 'webhook', 'id' => $webhook->id()]) ?>
+<?php } ?>

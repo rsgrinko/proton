@@ -220,6 +220,8 @@ $unread = $viewer->isGuest() ? 0 : UserNotification::unreadFor($viewer->id());
         .chart .col.empty { background: var(--border); }
         .chart-legend { display: flex; justify-content: space-between; }
 
+        .bulk-bar { margin-bottom: 10px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; }
+
         a.sort { color: inherit; text-decoration: none; white-space: nowrap; }
         a.sort:hover { text-decoration: underline; }
         a.sort .arrow { margin-left: 4px; color: var(--accent); }
@@ -398,6 +400,44 @@ $unread = $viewer->isGuest() ? 0 : UserNotification::unreadFor($viewer->id());
         Array.prototype.forEach.call(form.querySelectorAll('[data-check-item]'), function (box) {
             box.checked = master.checked;
         });
+
+        countChecked(form);
+    });
+
+    // Счётчик отмеченного: без него непонятно, над сколькими записями
+    // сработает массовое действие
+    document.addEventListener('change', function (event) {
+        var box = event.target.closest('[data-check-item]');
+
+        if (box) {
+            countChecked(box.closest('form'));
+        }
+    });
+
+    function countChecked(form) {
+        if (!form) {
+            return;
+        }
+
+        var label = form.querySelector('[data-check-count]');
+
+        if (!label) {
+            return;
+        }
+
+        var count = form.querySelectorAll('[data-check-item]:checked').length;
+
+        label.textContent = count === 0 ? 'ничего не отмечено' : 'отмечено: ' + count;
+    }
+
+    // Опасное действие переспрашивает: массовое удаление промахом мыши
+    // не отменить
+    document.addEventListener('click', function (event) {
+        var button = event.target.closest('[data-confirm]');
+
+        if (button && !window.confirm(button.getAttribute('data-confirm'))) {
+            event.preventDefault();
+        }
     });
 
     document.addEventListener('click', function (event) {
