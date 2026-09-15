@@ -122,8 +122,8 @@ foreach ($groups as $group) {
 
     <p class="muted small">
         Источники объявляются в <span class="mono">config/incoming.php</span>, адрес —
-        <span class="mono">POST /api/v1/hooks/{источник}</span>. Ключа API не нужно:
-        подлинность доказывает подпись. Объявлено источников: <?= count($sources) ?>.
+        <span class="mono">POST или GET /api/v1/hooks/{источник}</span>. Ключа API не нужно:
+        отправитель прикладывает токен источника. Объявлено источников: <?= count($sources) ?>.
     </p>
 
     <?php if ($incoming === []) { ?>

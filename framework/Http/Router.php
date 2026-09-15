@@ -180,11 +180,13 @@ final class Router
             return $this->run($route, $request, $params);
         }
 
+        // Ответ формой не занимаемся: человеку нужна страница, API — JSON,
+        // а решает это ядро по заголовку Accept
         if ($pathMatched) {
-            return Response::error('Метод ' . $request->method . ' для этого адреса не поддерживается', 405);
+            throw new ProtonException('Метод ' . $request->method . ' для этого адреса не поддерживается', [], 405);
         }
 
-        return Response::error('Адрес не найден: ' . $request->path, 404);
+        throw new ProtonException('Адрес не найден: ' . $request->path, [], 404);
     }
 
     /**

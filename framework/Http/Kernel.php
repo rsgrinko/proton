@@ -64,6 +64,8 @@ final class Kernel
             $response = $this->finish($this->notFound($request, $e));
         } catch (ValidationException $e) {
             $response = $this->finish($this->invalid($request, $e));
+        } catch (ProtonException $e) {
+            $response = $this->finish($this->httpError($request, $e));
         } catch (Throwable $e) {
             $response = $this->finish($this->crashed($request, $e));
         }
@@ -165,6 +167,29 @@ final class Kernel
         }
 
         return Response::html(View::render('errors/404', ['message' => $e->getMessage()], 'Не найдено'), 404);
+    }
+
+    /**
+     * Ошибка с кодом ответа: неизвестный адрес, неподходящий метод. Человеку
+     * нужна страница, а не сырой JSON, поэтому вид выбирается здесь, а не там,
+     * где ошибку бросили. Всё, что 500 и выше, идёт как обычная поломка — с
+     * записью в лог и кодом для поиска.
+     */
+    private function httpError(Request $request, ProtonException $e): Response
+    {
+        $status = (int) $e->getCode();
+
+        if ($status < 400 || $status > 499) {
+            return $this->crashed($request, $e);
+        }
+
+        if ($request->wantsJson()) {
+            return Response::error($e->getMessage(), $status);
+        }
+
+        $title = $status === 405 ? 'Метод не поддерживается' : 'Не найдено';
+
+        return Response::html(View::render('errors/404', ['message' => $e->getMessage()], $title), $status);
     }
 
     private function invalid(Request $request, ValidationException $e): Response
