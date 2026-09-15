@@ -357,6 +357,14 @@ final class Router
                 continue;
             }
 
+            // Всё остальное с типом-классом собирает контейнер: так в действие
+            // просят сервис, а не тащат его через конструктор контроллера
+            if ($type instanceof ReflectionNamedType && !$type->isBuiltin() && Container::instance()->has($type->getName())) {
+                $arguments[] = Container::instance()->make($type->getName());
+
+                continue;
+            }
+
             if ($parameter->isDefaultValueAvailable()) {
                 $arguments[] = $parameter->getDefaultValue();
 
