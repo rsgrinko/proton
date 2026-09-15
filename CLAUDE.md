@@ -77,7 +77,8 @@ API с ключами, очередь задач с воркером и расп
 ```
 framework/            ядро, namespace Rsgrinko\Proton\
   Support/            Config, Env, Container, Str, Validator, Logger, Audit,
-                      Diagnostics, ClientIp, IpAllowlist, RequestId, исключения
+                      Diagnostics, ClientIp, IpAllowlist, RequestId, Filters,
+                      Csv, Export, Import, Reports, Metrics, Monitor, исключения
   Http/               Request, Response, Router, Route, Kernel, Controller,
                       Middleware/ (ApiKey, Authenticate, Can, Guest, Install,
                       Throttle, VerifyCsrf)
@@ -104,15 +105,16 @@ app/                  код приложения, namespace App\
   Jobs/               свои задачи очереди
 
 config/               config.php (читает .env), menu.php, permissions.php, settings.php,
-                      events.php, webhooks.php, schedule.php, commands.php
+                      events.php, webhooks.php, schedule.php, commands.php, services.php
 routes/               web.php, admin.php, api.php
 resources/views/      шаблоны (layouts, auth, admin, notes, install, mail, errors)
 migrations/           миграции: 20260912100000_create_core_tables.php
 stubs/                заготовки генераторов, stubs/crud/ — заготовки раздела целиком
 tests/                свой раннер (run.php) и тесты
 docs/                 документация: START, DATABASE, MIGRATIONS, ROUTING, ACCESS,
-                      QUEUE, MAIL, WEBHOOKS, NOTIFICATIONS, BACKUP, CONSOLE,
-                      TESTS, DEPLOY, STATUS (на чём остановились)
+                      CONTAINER, QUEUE, MAIL, WEBHOOKS, NOTIFICATIONS, SETTINGS,
+                      BACKUP, LISTS, METRICS, CONSOLE, TESTS, DEPLOY,
+                      STATUS (на чём остановились)
 public/index.php      единственная точка входа
 bin/proton            консольная утилита
 var/                  runtime: база SQLite, логи, кэш, загруженные файлы
@@ -148,8 +150,30 @@ var/                  runtime: база SQLite, логи, кэш, загруже
   `$scope->apply($query)`, поэтому чужая запись в контроллер не приходит вовсе.
   Снимает фильтр только право `data.all`.
 
-**Контейнер** (`Support\Container`) собирает контроллеры и их зависимости; умеет только
-классы `Rsgrinko\Proton\`/`App\`, общий `Connection` и значения по умолчанию.
+**Контейнер** (`Support\Container`) собирает контроллеры, их зависимости и аргументы
+действий. Свои классы (`Rsgrinko\Proton\`, `App\`) собираются по типу без всяких
+записей; интерфейсы, чужие классы и всё, чему нужны настройки, описываются в
+`config/services.php` (`bind` — новый объект каждый раз, `singleton` — один на
+процесс). Модели контейнер не собирает: модель это строка таблицы, а не зависимость.
+Кольцо зависимостей ловится сообщением, а не зависанием. Подробности —
+`docs/CONTAINER.md`.
+
+**Списки** одинаковы во всех разделах: `Support\Filters` разбирает параметры адреса,
+подмешивает их в запрос и отдаёт вьюхе то, из чего рисуются форма (партиал `filters`),
+заголовки-сортировка (партиал `sort`) и ссылки страниц (`$filters->params()`).
+Сортировать можно только по колонкам из белого списка `sortable()` — имя уходит
+в `ORDER BY`. Негодное значение из адреса отбрасывается, а не роняет страницу.
+Выгрузка (`exportCsv()`) идёт тем же запросом, что и страница, и пишется в журнал;
+загрузка (`Support\Import`) проверяет каждую строку и отдаёт отчёт с номерами строк.
+Подробности — `docs/LISTS.md`.
+
+**Показатели**: счётчики запросов (`Support\Metrics`) ядро пишет в кэш почасовыми
+ведёрками — своей таблицы у них нет нарочно. Снимок состояния считается из базы и
+отдаётся наружу через `GET /api/v1/metrics` (ключ + право `system.view`). Пороги
+стережёт `Support\Monitor` из расписания: вышли за край — уведомление тем, у кого
+`system.manage`, не чаще раза в `MONITOR_REPEAT_MINUTES`. Отчёты за период считает
+`Support\Reports` (ряд без дырок, неделя — дата понедельника). Подробности —
+`docs/METRICS.md`.
 
 **Формы** защищены от подделки: `<?= View::csrf() ?>` в каждой POST-форме, прослойка
 `csrf` сверяет токен. Форма без поля получит 403. API это не касается — там ключ

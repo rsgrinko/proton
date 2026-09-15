@@ -30,7 +30,7 @@ php bin/proton serve        # http://127.0.0.1:8000
 
 ```bash
 php bin/proton status       # окружение, база, ключи, очередь, почта, копии
-php bin/proton test         # 151 тест
+php bin/proton test         # 183 теста
 php bin/proton route:list   # карта адресов
 php bin/proton help         # все команды
 ```
@@ -43,16 +43,18 @@ php bin/proton help         # все команды
 | База | SQLite и MySQL одним кодом, построитель запросов, Active Record со связями, мягкое удаление, пагинация |
 | Миграции | схема-билдер вместо строк SQL, накат под блокировкой, честный `down()` |
 | Доступ | вход, регистрация, подтверждение почты, сброс пароля, «запомнить меня», сеансы и устройства, роли с правами, область видимости |
-| Панель | пользователи, роли, ключи API, вебхуки, настройки, копии базы, журнал действий, логи, состояние |
+| Панель | пользователи, роли, ключи API, вебхуки, настройки, копии базы, отчёты, журнал действий, логи, состояние |
 | API | ключи с ограничением по адресам и лимитом запросов, единый формат ошибок |
 | Очередь | задачи с повторами и задержкой, воркер, расписание внутри воркера |
 | Почта | `mail()`, SMTP, внешний сервис по HTTP, запись в файл, заглушка для тестов |
 | Вебхуки | подписки на события, подпись посылок, повторы, журнал доставок |
 | Уведомления | лента в приложении и письма, адресация по праву |
 | Копии базы | создание с проверкой, ротация, расписание, восстановление из консоли |
-| Прочее | кэш, события, загрузка файлов, журнал действий, свой логгер, самодиагностика |
+| Списки | фильтры, сортировка и постраничная навигация одним описанием, выгрузка и загрузка CSV |
+| Показатели | отчёты за период, счётчики запросов, снимок для мониторинга, присмотр за порогами |
+| Прочее | контейнер зависимостей, кэш, события, загрузка файлов, журнал действий, свой логгер, самодиагностика |
 | Консоль | генераторы (вплоть до раздела целиком), обслуживание, пользователи, ключи |
-| Тесты | свой раннер без PHPUnit, 151 тест, база только своя |
+| Тесты | свой раннер без PHPUnit, 183 теста, база только своя |
 
 ## Чего нет
 
@@ -63,8 +65,7 @@ php bin/proton help         # все команды
   нужно кнопке «скопировать»;
 - нет очереди на Redis и вообще Redis — очередь и кэш живут в базе и файлах;
 - нет мультиязычности: все тексты русские, гвоздями;
-- нет событий по WebSocket, нет GraphQL, нет DI-контейнера с автоконфигурацией
-  (контейнер есть, но простой);
+- нет событий по WebSocket и GraphQL;
 - миграции не умеют менять колонку «на месте» в SQLite дальше того, что умеет сам
   SQLite.
 
@@ -147,7 +148,8 @@ php bin/proton make:crud Order --fields="number:string:Номер,total:int:Су
 ```
 framework/            ядро, namespace Rsgrinko\Proton\ — меняется редко
   Support/            Config, Env, Settings, Container, Str, Validator, Logger,
-                      Audit, Diagnostics, HttpClient, ClientIp, RequestId
+                      Audit, Diagnostics, HttpClient, ClientIp, RequestId,
+                      Filters, Csv, Export, Import, Reports, Metrics, Monitor
   Http/               Request, Response, Router, Route, Kernel, Controller, Middleware/
   Database/           Connection (sqlite|mysql), Query/Builder, Model/ (Active Record),
                       Schema/ (Blueprint), Migration, Migrator, Lock
@@ -168,7 +170,7 @@ app/                  код приложения, namespace App\
   Jobs/               свои задачи очереди
 
 config/               config.php и реестры: menu, permissions, settings,
-                      webhooks, events, schedule, commands
+                      webhooks, events, schedule, commands, services
 routes/               web.php, admin.php, api.php
 resources/views/      шаблоны; свой файл перекрывает шаблон ядра
 migrations/           миграции
@@ -216,6 +218,9 @@ php bin/proton status | route:list | cache:clear | logs:purge | app:key | seed
 | [docs/MIGRATIONS.md](docs/MIGRATIONS.md) | миграции, схема-билдер, откат |
 | [docs/ROUTING.md](docs/ROUTING.md) | маршруты, прослойки, контроллеры, шаблоны |
 | [docs/ACCESS.md](docs/ACCESS.md) | вход, права, роли, область видимости, ключи API |
+| [docs/CONTAINER.md](docs/CONTAINER.md) | контейнер: привязки, singleton, сборка аргументов |
+| [docs/LISTS.md](docs/LISTS.md) | фильтры и сортировка списков, выгрузка и загрузка CSV |
+| [docs/METRICS.md](docs/METRICS.md) | отчёты, показатели работы, присмотр за порогами |
 | [docs/QUEUE.md](docs/QUEUE.md) | очередь, воркер, расписание, события, кэш |
 | [docs/MAIL.md](docs/MAIL.md) | письма и драйверы, в том числе внешний сервис |
 | [docs/WEBHOOKS.md](docs/WEBHOOKS.md) | подписки на события, подпись посылок, повторы |
