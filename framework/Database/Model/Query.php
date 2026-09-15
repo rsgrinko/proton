@@ -180,7 +180,9 @@ final class Query extends Builder
     {
         $model = new ($this->model)();
 
-        if ($model->hasTimestamps() && !array_key_exists('updated_at', $data)) {
+        // Отметку ставим, только если колонка есть: у журналов и событий
+        // её обычно нет — там только created_at
+        if ($model->hasTimestamps() && $model->usesColumn('updated_at') && !array_key_exists('updated_at', $data)) {
             $data['updated_at'] = date('Y-m-d H:i:s');
         }
 

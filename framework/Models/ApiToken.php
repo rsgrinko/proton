@@ -40,7 +40,7 @@ final class ApiToken extends Model
      *
      * @return array{token: self, key: string}
      */
-    public static function issue(string $name, int $userId, string $ipList = ''): array
+    public static function issue(string $name, int $userId, string $ipList = '', int $days = 0): array
     {
         $prefix = Str::random(8);
         $secret = Str::random(40);
@@ -55,6 +55,8 @@ final class ApiToken extends Model
             'token_hash'  => self::hash($key),
             'allowed_ips' => $ipList,
             'active'      => 1,
+            // Ключ без срока живёт вечно — это осознанный выбор того, кто его выпускал
+            'expires_at'  => $days > 0 ? date('Y-m-d H:i:s', time() + $days * 86400) : null,
             'created_at'  => Connection::now(),
         ])->save();
 
@@ -90,6 +92,57 @@ final class ApiToken extends Model
         }
 
         return $token;
+    }
+
+    /**
+     * До какого времени действует; пусто — без срока.
+     */
+    public function expiresAt(): string
+    {
+        return trim((string) $this->raw('expires_at'));
+    }
+
+    /**
+     * Сколько дней осталось; -1 — ключ без срока.
+     */
+    public function daysLeft(): int
+    {
+        $expires = $this->expiresAt();
+
+        if ($expires === '') {
+            return -1;
+        }
+
+        $time = strtotime($expires);
+
+        return $time === false ? -1 : (int) ceil(($time - time()) / 86400);
+    }
+
+    public function expired(): bool
+    {
+        $expires = $this->expiresAt();
+
+        return $expires !== '' && strtotime($expires) < time();
+    }
+
+    /**
+     * Действующие ключи, которым осталось не больше стольких дней. По ним
+     * рассылаются напоминания владельцам.
+     *
+     * @return array<int, self>
+     */
+    public static function expiringWithin(int $days): array
+    {
+        /** @var array<int, self> $tokens */
+        $tokens = self::query()
+            ->where('active', 1)
+            ->whereNotNull('expires_at')
+            ->where('expires_at', '>', Connection::now())
+            ->where('expires_at', '<=', date('Y-m-d H:i:s', time() + max(1, $days) * 86400))
+            ->orderBy('expires_at')
+            ->get();
+
+        return $tokens;
     }
 
     /**

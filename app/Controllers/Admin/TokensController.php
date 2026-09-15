@@ -53,7 +53,8 @@ final class TokensController extends Controller
             'name'    => 'nullable|max:191',
             'user_id' => 'required|integer|exists:users',
             'ips'     => 'nullable|max:500',
-        ], ['name' => 'Название', 'user_id' => 'Владелец', 'ips' => 'Разрешённые адреса']);
+            'days'    => 'nullable|integer',
+        ], ['name' => 'Название', 'user_id' => 'Владелец', 'ips' => 'Разрешённые адреса', 'days' => 'Срок в днях']);
 
         $ips = trim((string) ($data['ips'] ?? ''));
 
@@ -65,9 +66,15 @@ final class TokensController extends Controller
             }
         }
 
-        $issued = ApiToken::issue((string) ($data['name'] ?? ''), (int) $data['user_id'], $ips);
+        $days = max(0, (int) ($data['days'] ?? 0));
 
-        Audit::created('token', $issued['token']->id(), 'выпущен ключ ' . $issued['token']->mask());
+        $issued = ApiToken::issue((string) ($data['name'] ?? ''), (int) $data['user_id'], $ips, $days);
+
+        Audit::created(
+            'token',
+            $issued['token']->id(),
+            'выпущен ключ ' . $issued['token']->mask() . ($days > 0 ? ' на ' . $days . ' дн.' : ' без срока')
+        );
 
         // Ключ показываем один раз — дальше только маска
         View::stash('api_key', $issued['key']);

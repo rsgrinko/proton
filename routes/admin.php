@@ -16,6 +16,7 @@ use App\Controllers\Admin\DashboardController;
 use App\Controllers\Admin\LogsController;
 use App\Controllers\Admin\ReportsController;
 use App\Controllers\Admin\RolesController;
+use App\Controllers\Admin\SecurityController;
 use App\Controllers\Admin\SettingsController;
 use App\Controllers\Admin\SystemController;
 use App\Controllers\Admin\TokensController;
@@ -87,6 +88,13 @@ return static function (Router $router): void {
         $router->group(['prefix' => '/reports', 'middleware' => 'can:' . Permission::SYSTEM_VIEW], function (Router $router): void {
             $router->get('', [ReportsController::class, 'index'])->name('admin.reports');
             $router->get('/export', [ReportsController::class, 'export'])->name('admin.reports.export');
+        });
+
+        $router->group(['prefix' => '/security', 'middleware' => 'can:' . Permission::SYSTEM_MANAGE], function (Router $router): void {
+            $router->get('', [SecurityController::class, 'index'])->name('admin.security');
+            $router->get('/export', [SecurityController::class, 'export'])->name('admin.security.export');
+            $router->post('/block', [SecurityController::class, 'block'])->name('admin.security.block');
+            $router->post('/unblock', [SecurityController::class, 'unblock'])->name('admin.security.unblock');
         });
 
         $router->get('/audit', [AuditController::class, 'index'])

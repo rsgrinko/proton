@@ -8,6 +8,8 @@ use Rsgrinko\Proton\Access\AccessDenied;
 use Rsgrinko\Proton\Auth\Auth;
 use Rsgrinko\Proton\Auth\Csrf;
 use Rsgrinko\Proton\Database\Model\RecordNotFound;
+use Rsgrinko\Proton\Models\BlockedIp;
+use Rsgrinko\Proton\Models\SecurityEvent;
 use Rsgrinko\Proton\Http\Middleware\ApiKey;
 use Rsgrinko\Proton\Http\Middleware\Authenticate;
 use Rsgrinko\Proton\Http\Middleware\Can;
@@ -55,7 +57,7 @@ final class Kernel
         Settings::apply();
 
         try {
-            $response = $this->finish($this->router()->dispatch($request));
+            $response = $this->finish($this->blocked($request) ?? $this->router()->dispatch($request));
         } catch (AccessDenied $e) {
             $response = $this->finish($this->denied($request, $e));
         } catch (RecordNotFound $e) {
@@ -114,6 +116,27 @@ final class Kernel
     {
         return Csrf::applyCookie(Auth::applyCookies($response))
             ->withHeader(RequestId::HEADER, RequestId::current());
+    }
+
+    /**
+     * Закрытый адрес разворачиваем до маршрутов: заблокированному нечего делать
+     * ни на форме входа, ни в API. Пустой ответ означает «адрес не закрыт».
+     */
+    private function blocked(Request $request): ?Response
+    {
+        if (!(bool) Config::get('security.blocklist', true) || !BlockedIp::blocked($request->ip())) {
+            return null;
+        }
+
+        SecurityEvent::record(SecurityEvent::IP_BLOCKED, '', $request->path, $request->userAgent());
+
+        if ($request->wantsJson()) {
+            return Response::error('Доступ с этого адреса закрыт', 403);
+        }
+
+        return Response::html(View::render('errors/403', [
+            'message' => 'Доступ с этого адреса закрыт. Если это ошибка, обратитесь к администратору.',
+        ], 'Доступ закрыт'), 403);
     }
 
     /**

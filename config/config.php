@@ -193,6 +193,20 @@ return [
         'max_rows' => Env::int('EXPORT_MAX_ROWS', 20000),
     ],
 
+    'security' => [
+        // Закрытые адреса проверяются на каждом заходе; выключается, если
+        // блокировки делает что-то снаружи (nginx, файрвол)
+        'blocklist' => Env::bool('SECURITY_BLOCKLIST', true),
+        // Столько раз упёрся в лимит попыток за окно (минуты) — адрес закрывается
+        'autoblock_attempts' => Env::int('SECURITY_AUTOBLOCK_ATTEMPTS', 30),
+        'autoblock_window'   => Env::int('SECURITY_AUTOBLOCK_WINDOW', 60),
+        'autoblock_minutes'  => Env::int('SECURITY_AUTOBLOCK_MINUTES', 60),
+        // Сколько держать журнал подозрительных событий
+        'keep_days' => Env::int('SECURITY_KEEP_DAYS', 60),
+        // За сколько дней предупреждать владельца об истечении ключа API
+        'key_expiry_notice_days' => Env::int('KEY_EXPIRY_NOTICE_DAYS', 7),
+    ],
+
     'metrics' => [
         // Счётчики запросов в кэше: выключаются, если сбор не нужен
         'enabled' => Env::bool('METRICS_ENABLED', true),

@@ -131,6 +131,15 @@ abstract class Model implements JsonSerializable
         return $this->timestamps;
     }
 
+    /**
+     * Есть ли такая колонка в таблице — нужно массовому обновлению: отметку
+     * времени нельзя ставить там, где её не предусмотрели схемой.
+     */
+    public function usesColumn(string $column): bool
+    {
+        return $this->hasColumn($column);
+    }
+
     public function softDeletes(): bool
     {
         return $this->softDelete;

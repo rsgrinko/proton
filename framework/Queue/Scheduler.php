@@ -5,7 +5,11 @@ declare(strict_types=1);
 namespace Rsgrinko\Proton\Queue;
 
 use Rsgrinko\Proton\Backup\BackupJob;
+use Rsgrinko\Proton\Models\ApiToken;
 use Rsgrinko\Proton\Models\Setting;
+use Rsgrinko\Proton\Models\User;
+use Rsgrinko\Proton\Notifications\ApiKeyExpiringNotification;
+use Rsgrinko\Proton\Notifications\Notify;
 use Rsgrinko\Proton\Support\Config;
 use Rsgrinko\Proton\Support\Logger;
 use Rsgrinko\Proton\Support\Monitor;
@@ -175,6 +179,22 @@ final class Scheduler
                 Queue::push(BackupJob::class);
             });
         }
+
+        // Ключи API не продлеваются, поэтому владельцу нужно время выпустить
+        // новый: напоминаем раз в сутки, пока срок не вышел
+        self::dailyAt('09:00', 'keys:expiring', static function (): void {
+            $days = max(1, (int) Config::get('security.key_expiry_notice_days', 7));
+
+            foreach (ApiToken::expiringWithin($days) as $token) {
+                $owner = User::find((int) $token->raw('user_id'));
+
+                if ($owner === null) {
+                    continue;
+                }
+
+                Notify::send($owner, new ApiKeyExpiringNotification($token, $token->daysLeft()));
+            }
+        });
 
         // Присмотр за порогами: о беде лучше узнать от приложения, чем от людей
         if ((bool) Config::get('monitor.enabled', true)) {

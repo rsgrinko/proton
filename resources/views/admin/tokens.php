@@ -50,6 +50,11 @@ use Rsgrinko\Proton\View\View;
                 <span>Разрешённые адреса (через запятую, можно сети)</span>
                 <input type="text" name="ips" placeholder="127.0.0.1, 10.0.0.0/8">
             </label>
+
+            <label>
+                <span>Срок в днях</span>
+                <input type="number" name="days" min="0" value="0" placeholder="0 — без срока">
+            </label>
         </div>
 
         <div class="filter-actions">
@@ -74,6 +79,7 @@ use Rsgrinko\Proton\View\View;
                     <th class="hide-sm">Владелец</th>
                     <th class="hide-sm">Адреса</th>
                     <th>Состояние</th>
+                    <th class="hide-sm">Срок</th>
                     <th class="hide-sm">Использован</th>
                     <th></th>
                 </tr>
@@ -89,6 +95,18 @@ use Rsgrinko\Proton\View\View;
                                 <span class="badge ok">активен</span>
                             <?php } else { ?>
                                 <span class="badge muted">отключён</span>
+                            <?php } ?>
+                        </td>
+                        <td class="hide-sm small">
+                            <?php $left = $token->daysLeft(); ?>
+                            <?php if ($left < 0) { ?>
+                                <span class="muted">без срока</span>
+                            <?php } elseif ($token->expired()) { ?>
+                                <span class="badge error">истёк</span>
+                            <?php } elseif ($left <= 7) { ?>
+                                <span class="badge warn">осталось <?= (int) $left ?> дн.</span>
+                            <?php } else { ?>
+                                <?= View::e(View::date($token->expiresAt(), 'd.m.Y')) ?>
                             <?php } ?>
                         </td>
                         <td class="hide-sm muted small"><?= View::e(View::ago((string) $token->raw('last_used_at'))) ?></td>

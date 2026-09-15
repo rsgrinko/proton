@@ -7,6 +7,8 @@ namespace Rsgrinko\Proton\Auth;
 use Rsgrinko\Proton\Access\Viewer;
 use Rsgrinko\Proton\Http\Response;
 use Rsgrinko\Proton\Models\RememberToken;
+use Rsgrinko\Proton\Models\BlockedIp;
+use Rsgrinko\Proton\Models\SecurityEvent;
 use Rsgrinko\Proton\Models\User;
 use Rsgrinko\Proton\Models\UserSession;
 use Rsgrinko\Proton\RateLimit\RateLimiter;
@@ -163,6 +165,11 @@ final class Auth
         $window  = max(60, (int) Config::get('auth.attempts_window', 900));
 
         if ($limiter->count($key) >= $max) {
+            SecurityEvent::record(SecurityEvent::LOGIN_BLOCKED, $credential);
+
+            // Перебор продолжается после исчерпанного лимита — закрываем адрес
+            self::blockIfPersistent($ip);
+
             return ['user' => null, 'error' => 'Слишком много попыток входа. Попробуйте позже'];
         }
 
@@ -174,6 +181,8 @@ final class Auth
 
         if ($user === null || !$user->verifyPassword($password) || !$user->isActive()) {
             $limiter->hit($key, time() + $window);
+
+            SecurityEvent::record(SecurityEvent::LOGIN_FAILED, $credential);
 
             return ['user' => null, 'error' => 'Неверный логин или пароль'];
         }
@@ -187,6 +196,27 @@ final class Auth
         $limiter->reset($key);
 
         return ['user' => $user, 'error' => ''];
+    }
+
+    /**
+     * Закрыть адрес, если перебор не прекращается. Порог и срок задаются
+     * настройками SECURITY_*; ноль в пороге выключает автоблокировку.
+     */
+    private static function blockIfPersistent(string $ip): void
+    {
+        $threshold = (int) Config::get('security.autoblock_attempts', 30);
+
+        if ($threshold <= 0 || $ip === '') {
+            return;
+        }
+
+        $window = max(1, (int) Config::get('security.autoblock_window', 60));
+
+        if (SecurityEvent::countFor($ip, SecurityEvent::LOGIN_BLOCKED, $window) < $threshold) {
+            return;
+        }
+
+        BlockedIp::block($ip, 'перебор паролей', max(1, (int) Config::get('security.autoblock_minutes', 60)));
     }
 
     /**
