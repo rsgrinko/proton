@@ -45,6 +45,10 @@ return [
     'db' => [
         'driver' => Env::string('DB_DRIVER', 'sqlite'),
 
+        // С какого времени запрос считается медленным и уходит в лог, мс.
+        // 0 — не писать вовсе
+        'slow_ms' => Env::int('DB_SLOW_MS', 200),
+
         'sqlite' => [
             'path' => Env::string('DB_PATH', APP_ROOT . '/var/app.sqlite'),
         ],
@@ -176,6 +180,8 @@ return [
         // debug | info | warning | error
         'level'     => Env::string('LOG_LEVEL', 'info'),
         'keep_days' => Env::int('LOG_KEEP_DAYS', 30),
+        // Сколько последних строк файла разбирает страница логов
+        'tail_lines' => Env::int('LOG_TAIL_LINES', 2000),
     ],
 
     'audit' => [

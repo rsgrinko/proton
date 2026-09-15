@@ -9,6 +9,7 @@ use PDOException;
 use PDOStatement;
 use Rsgrinko\Proton\Database\Query\Builder;
 use Rsgrinko\Proton\Support\Config;
+use Rsgrinko\Proton\Support\Profiler;
 use Throwable;
 
 /**
@@ -522,7 +523,13 @@ final class Connection
             $statement->bindValue($name, is_bool($value) ? (int) $value : $value, $type);
         }
 
+        $started = microtime(true);
+
         $statement->execute();
+
+        // Замер уходит профилировщику: он решит, писать ли медленный запрос
+        // в лог и собирать ли полную картину для панели отладки
+        Profiler::query($sql, (microtime(true) - $started) * 1000, $statement->rowCount());
 
         return $statement;
     }

@@ -6,6 +6,7 @@ namespace Rsgrinko\Proton\Webhooks;
 
 use Rsgrinko\Proton\Http\Request;
 use Rsgrinko\Proton\Models\IncomingHook;
+use Rsgrinko\Proton\Support\Env;
 use Rsgrinko\Proton\Support\Logger;
 use Rsgrinko\Proton\Support\Str;
 use Throwable;
@@ -16,39 +17,43 @@ use Throwable;
  * Обратная сторона `Webhooks` — там мы рассылаем свои события, здесь принимаем
  * чужие. Источник объявляется в `config/incoming.php`:
  *
- *     Incoming::register('billing', 'Биллинг', 'BILLING_HOOK_SECRET', static function (array $payload): void {
- *         Order::pay((int) $payload['order_id']);
+ *     Incoming::register('billing', 'Биллинг', 'BILLING_HOOK_TOKEN', static function (array $payload): void {
+ *         Queue::push(MarkOrderPaidJob::class, ['order' => (int) $payload['id']]);
  *     });
  *
- * Подпись проверяется тем же способом, каким подписываем свои посылки: HMAC-SHA256
- * от «время.тело» секретом источника в заголовке X-Proton-Signature. Источник
- * без секрета принимается как есть — так бывает у систем, которые подписывать
- * не умеют, и это осознанный выбор того, кто его завёл.
+ * Проверка простая — токен. Отправитель присылает его заголовком
+ * `X-Proton-Token`, через `Authorization: Bearer …` или параметром `token`:
+ * как умеет. Сам токен лежит в .env (или в окружении процесса), в реестре только
+ * её имя: чужому секрету в репозитории не место. Источник, объявленный без токена,
+ * принимается как есть: так бывает у систем, которые не умеют и этого.
  *
- * Каждая посылка попадает в журнал: разбираться с «мы отправили, а вы не приняли»
- * иначе нечем.
+ * Принимаются и POST с телом JSON, и GET с параметрами — обработчик в обоих
+ * случаях получает одинаковый массив.
+ *
+ * Каждая посылка попадает в журнал: разбираться с «мы отправили, а вы не
+ * приняли» иначе нечем.
  */
 final class Incoming
 {
-    /** Сколько секунд посылка считается свежей */
-    private const WINDOW = 300;
+    /** Заголовок с токеном */
+    public const HEADER = 'x-proton-token';
 
-    /** @var array<string, array{label: string, secret: string, handler: callable}>|null */
+    /** @var array<string, array{label: string, token: string, handler: callable}>|null */
     private static ?array $sources = null;
 
     /**
-     * @param string   $secret  имя переменной окружения с секретом; пусто — без подписи
+     * @param string $token имя переменной с токеном (.env или окружение); пусто — без проверки
      * @param callable(array<string, mixed>, Request): void $handler
      */
-    public static function register(string $key, string $label, string $secret, callable $handler): void
+    public static function register(string $key, string $label, string $token, callable $handler): void
     {
         self::boot();
 
-        self::$sources[$key] = ['label' => $label, 'secret' => $secret, 'handler' => $handler];
+        self::$sources[$key] = ['label' => $label, 'token' => $token, 'handler' => $handler];
     }
 
     /**
-     * @return array<string, array{label: string, secret: string, handler: callable}>
+     * @return array<string, array{label: string, token: string, handler: callable}>
      */
     public static function sources(): array
     {
@@ -58,7 +63,7 @@ final class Incoming
     }
 
     /**
-     * @return array{label: string, secret: string, handler: callable}|null
+     * @return array{label: string, token: string, handler: callable}|null
      */
     public static function source(string $key): ?array
     {
@@ -80,19 +85,20 @@ final class Incoming
             return IncomingHook::UNKNOWN;
         }
 
-        // Тело берём у запроса, а не из php://input: ядро его уже прочитало,
-        // и второй раз поток отдаст пустоту
-        $body    = $request->rawBody;
         $payload = $request->all();
 
-        if ($body !== '' && $payload === []) {
-            $payload = (array) json_decode($body, true);
+        // Тело JSON ядро разбирает само, но чужие системы шлют по-разному —
+        // на всякий случай разбираем и сырое тело
+        if ($payload === [] && trim($request->rawBody) !== '') {
+            $payload = (array) json_decode($request->rawBody, true);
         }
 
         $event = (string) ($payload['event'] ?? $payload['type'] ?? '');
 
-        if (!self::verify($source['secret'], $request, $body)) {
-            IncomingHook::write($key, $event, $payload, IncomingHook::REJECTED, 'подпись не сошлась');
+        $refusal = self::refusal($source['token'], $request);
+
+        if ($refusal !== null) {
+            IncomingHook::write($key, $event, self::withoutToken($payload), IncomingHook::REJECTED, $refusal);
 
             return IncomingHook::REJECTED;
         }
@@ -100,13 +106,13 @@ final class Incoming
         try {
             ($source['handler'])($payload, $request);
 
-            IncomingHook::write($key, $event, $payload, IncomingHook::DONE);
+            IncomingHook::write($key, $event, self::withoutToken($payload), IncomingHook::DONE);
 
             return IncomingHook::DONE;
         } catch (Throwable $e) {
             // Обработчик упал — посылку принимаем, но помечаем: чужая система
             // не должна слать её бесконечно, а разобраться мы сможем по журналу
-            IncomingHook::write($key, $event, $payload, IncomingHook::FAILED, $e->getMessage());
+            IncomingHook::write($key, $event, self::withoutToken($payload), IncomingHook::FAILED, $e->getMessage());
 
             (new Logger('webhooks'))->error('Входящий вебхук упал', [
                 'source' => $key,
@@ -118,33 +124,69 @@ final class Incoming
     }
 
     /**
-     * Цела ли подпись. Источник без секрета проверять нечем — принимаем.
+     * Почему посылку не приняли. null — приняли, иначе текст для журнала.
+     *
+     * Причины разные, и различать их важно: «токен не подошёл» — вопрос
+     * к отправителю, «переменная пуста» — к нам самим. Без этого своя
+     * недонастройка выглядит как чужая ошибка, и ищут её не там.
      */
-    private static function verify(string $secretName, Request $request, string $body): bool
+    private static function refusal(string $variable, Request $request): ?string
     {
-        if ($secretName === '') {
-            return true;
+        // Источник объявлен без токена — проверять нечем
+        if ($variable === '') {
+            return null;
         }
 
-        $secret = (string) (getenv($secretName) ?: '');
+        // Env смотрит и в окружение процесса, и в .env: токен кладут и туда, и туда
+        $expected = Env::string($variable, '');
 
-        if ($secret === '') {
-            return false;
+        if ($expected === '') {
+            return 'источник не настроен: переменная ' . $variable . ' пуста';
         }
 
-        $signature = $request->header('x-proton-signature');
-        $timestamp = (int) $request->header('x-proton-timestamp');
+        $given = self::token($request);
 
-        if ($signature === '' || $timestamp <= 0) {
-            return false;
+        if ($given === '') {
+            return 'токена в запросе нет';
         }
 
-        // Старую посылку не принимаем: подслушанную её иначе можно повторить
-        if (abs(time() - $timestamp) > self::WINDOW) {
-            return false;
+        return Str::secureEquals($expected, $given) ? null : 'токен не подошёл';
+    }
+
+    /**
+     * Токен из запроса: заголовком, в Authorization или параметром.
+     */
+    private static function token(Request $request): string
+    {
+        $header = trim($request->header(self::HEADER));
+
+        if ($header !== '') {
+            return $header;
         }
 
-        return Str::secureEquals(hash_hmac('sha256', $timestamp . '.' . $body, $secret), $signature);
+        $bearer = trim($request->bearerToken());
+
+        if ($bearer !== '') {
+            return $bearer;
+        }
+
+        // У GET-посылки параметры лежат в адресе, а не в теле
+        return trim((string) $request->input('token', $request->query('token', '')));
+    }
+
+    /**
+     * Токен не должен осесть в журнале: там его увидит каждый, кто смотрит
+     * входящие посылки.
+     *
+     * @param array<string, mixed> $payload
+     *
+     * @return array<string, mixed>
+     */
+    private static function withoutToken(array $payload): array
+    {
+        unset($payload['token']);
+
+        return $payload;
     }
 
     /**

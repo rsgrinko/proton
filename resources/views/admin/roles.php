@@ -45,4 +45,11 @@ use Rsgrinko\Proton\View\View;
             <?php } ?>
         </table>
     </div>
+
+    <?= View::partial('pagination', [
+        'route'  => 'admin.roles',
+        'page'   => $page['page'],
+        'pages'  => $page['pages'],
+        'params' => [],
+    ]) ?>
 </div>

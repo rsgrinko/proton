@@ -220,7 +220,33 @@ $unread = $viewer->isGuest() ? 0 : UserNotification::unreadFor($viewer->id());
         .chart .col.empty { background: var(--border); }
         .chart-legend { display: flex; justify-content: space-between; }
 
+        /* Развёрнутый контекст лога бывает одной строкой в десятки килобайт:
+           без ограничения он растягивает колонку и уносит вёрстку всей таблицы */
+        /* Колонки лога фиксированы: иначе развёрнутый контекст перетягивает
+           ширину на себя и время с уровнем сжимаются в столбик по букве */
+        table.logs th:nth-child(1), table.logs td:nth-child(1) { width: 150px; }
+        table.logs th:nth-child(2), table.logs td:nth-child(2) { width: 100px; }
+        table.logs th:nth-child(3), table.logs td:nth-child(3) { width: 110px; }
+
+        .log-context { display: block; max-width: min(100%, 900px); }
+        .log-context pre { max-width: 100%; margin: 6px 0 0; overflow-x: auto; word-break: break-all; }
+
+        .attachments { display: flex; flex-wrap: wrap; gap: 12px; }
+        .attachments .attachment { width: 140px; }
+        .attachments img { width: 140px; height: 100px; object-fit: cover; border-radius: 6px; border: 1px solid var(--border); }
+        .attachments .file-icon { display: flex; align-items: center; justify-content: center; width: 140px; height: 100px;
+                                  border: 1px solid var(--border); border-radius: 6px; color: var(--muted); font-size: 12px; }
+
         .bulk-bar { margin-bottom: 10px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; }
+
+        /* Панель отладки: видна только при APP_DEBUG и не мешает содержимому */
+        .profiler { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; max-height: 60vh; overflow-y: auto;
+                    background: var(--panel); border-top: 1px solid var(--border); padding: 6px 12px; font-size: 12px; }
+        .profiler summary { cursor: pointer; color: var(--muted); }
+        .profiler .warn { color: var(--warn); }
+        .profiler h3 { font-size: 12px; margin: 10px 0 4px; }
+        .profiler td { padding: 2px 6px; border: none; vertical-align: top; }
+        .profiler td.count { white-space: nowrap; color: var(--muted); }
 
         a.sort { color: inherit; text-decoration: none; white-space: nowrap; }
         a.sort:hover { text-decoration: underline; }
@@ -376,6 +402,8 @@ $unread = $viewer->isGuest() ? 0 : UserNotification::unreadFor($viewer->id());
 
     <?= $content ?>
 </main>
+
+<?= View::partial('profiler') ?>
 
 <?php /*
     Единственный скрипт: кнопка «скопировать» и галочка «отметить все». Без

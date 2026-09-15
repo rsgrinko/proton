@@ -382,7 +382,10 @@ test('http: список фильтруется и сортируется пар
     $response = httpRequest('GET', '/admin/users', $admin, [], ['sort' => 'password_hash', 'dir' => 'asc']);
 
     assertStatus(200, $response);
-    assertNotContains('password_hash', $response->body());
+    // Имя колонки может мелькнуть в панели отладки, поэтому смотрим на само
+    // условие сортировки и на ссылки страниц
+    assertNotContains('ORDER BY password_hash', $response->body());
+    assertNotContains('sort=password_hash', $response->body());
 
     $response = httpRequest('GET', '/admin/users', $admin, [], ['sort' => 'login', 'dir' => 'asc']);
 

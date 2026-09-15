@@ -15,6 +15,7 @@ use Rsgrinko\Proton\Models\Setting;
 use Rsgrinko\Proton\Models\User;
 use Rsgrinko\Proton\Queue\Queue;
 use Rsgrinko\Proton\Queue\Scheduler;
+use Rsgrinko\Proton\Support\Env;
 use Rsgrinko\Proton\Webhooks\Incoming;
 
 test('очередь: важная задача разбирается раньше обычной', function (): void {
@@ -101,67 +102,129 @@ test('расписание: задачу запускают кнопкой, не
     });
 });
 
-test('входящие вебхуки: без подписи не принимаем, с подписью — принимаем', function (): void {
+test('входящие вебхуки: без токена не принимаем, с токеном — принимаем', function (): void {
     withOwnDatabase(static function (): void {
         Incoming::reset();
 
         $received = [];
 
-        Incoming::register('test', 'Проверка', 'TEST_HOOK_SECRET', static function (array $payload) use (&$received): void {
+        Incoming::register('test', 'Проверка', 'TEST_HOOK_TOKEN', static function (array $payload) use (&$received): void {
             $received = $payload;
         });
 
-        putenv('TEST_HOOK_SECRET=секрет-источника');
+        putenv('TEST_HOOK_TOKEN=токен-источника');
 
-        // Без заголовков подпись не сходится
-        assertSame(IncomingHook::REJECTED, Incoming::receive('test', Request::create('POST', '/api/v1/hooks/test', ['event' => 'ping'])));
+        // Без токена не пускаем
+        assertSame(
+            IncomingHook::REJECTED,
+            Incoming::receive('test', Request::create('POST', '/api/v1/hooks/test', ['event' => 'ping']))
+        );
 
         // Неизвестный источник
         assertSame(IncomingHook::UNKNOWN, Incoming::receive('нет-такого', Request::create('POST', '/api/v1/hooks/x')));
 
-        // С правильной подписью — принимаем. Подпись считается от тела запроса,
-        // поэтому сначала собираем запрос, потом подписываем его тело
-        $timestamp = time();
-        $request   = Request::create('POST', '/api/v1/hooks/test', ['event' => 'ping', 'id' => '7']);
-        $signature = hash_hmac('sha256', $timestamp . '.' . $request->rawBody, 'секрет-источника');
-
+        // Токен заголовком
         $request = Request::create('POST', '/api/v1/hooks/test', ['event' => 'ping', 'id' => '7'], [], [
-            'x-proton-signature' => $signature,
-            'x-proton-timestamp' => (string) $timestamp,
+            'x-proton-token' => 'токен-источника',
         ]);
 
         assertSame(IncomingHook::DONE, Incoming::receive('test', $request));
         assertSame('ping', $received['event'] ?? '');
 
-        // Всё записано в журнал
-        assertSame(3, IncomingHook::query()->count());
-        assertSame(1, IncomingHook::query()->where('status', IncomingHook::DONE)->count());
+        // Токен параметром — так шлют GET-посылки
+        $get = Request::create('GET', '/api/v1/hooks/test', [], ['event' => 'ping', 'token' => 'токен-источника']);
 
-        putenv('TEST_HOOK_SECRET');
+        assertSame(IncomingHook::DONE, Incoming::receive('test', $get));
+
+        // Чужой токен не подходит
+        $foreign = Request::create('POST', '/api/v1/hooks/test', ['event' => 'ping'], [], [
+            'x-proton-token' => 'не-тот',
+        ]);
+
+        assertSame(IncomingHook::REJECTED, Incoming::receive('test', $foreign));
+
+        // Всё записано в журнал, и токен в нём не осел
+        assertSame(5, IncomingHook::query()->count());
+        assertSame(2, IncomingHook::query()->where('status', IncomingHook::DONE)->count());
+
+        foreach (IncomingHook::query()->get() as $hook) {
+            assertNotContains('токен-источника', (string) json_encode($hook->payload, JSON_UNESCAPED_UNICODE));
+        }
+
+        putenv('TEST_HOOK_TOKEN');
         Incoming::reset();
     });
 });
 
-test('входящие вебхуки: старая посылка не принимается', function (): void {
+test('входящие вебхуки: источник без токена принимает всех', function (): void {
     withOwnDatabase(static function (): void {
         Incoming::reset();
 
-        Incoming::register('test', 'Проверка', 'TEST_HOOK_SECRET', static function (): void {
+        $seen = false;
+
+        Incoming::register('open', 'Открытый', '', static function () use (&$seen): void {
+            $seen = true;
         });
 
-        putenv('TEST_HOOK_SECRET=секрет-источника');
+        $request = Request::create('GET', '/api/v1/hooks/open', [], ['event' => 'ping']);
 
-        $timestamp = time() - 3600;
-        $signature = hash_hmac('sha256', $timestamp . '.' . '{}', 'секрет-источника');
+        assertSame(IncomingHook::DONE, Incoming::receive('open', $request));
+        assertTrue($seen);
 
-        $request = Request::create('POST', '/api/v1/hooks/test', ['event' => 'ping'], [], [
-            'x-proton-signature' => $signature,
-            'x-proton-timestamp' => (string) $timestamp,
-        ]);
+        Incoming::reset();
+    });
+});
 
-        assertSame(IncomingHook::REJECTED, Incoming::receive('test', $request), 'подслушанную посылку не повторить');
+test('входящие вебхуки: недонастроенный источник никого не пускает', function (): void {
+    withOwnDatabase(static function (): void {
+        Incoming::reset();
 
-        putenv('TEST_HOOK_SECRET');
+        Incoming::register('test', 'Проверка', 'TEST_EMPTY_TOKEN', static function (): void {
+        });
+
+        // Переменная объявлена в реестре, но пуста в окружении — это ошибка
+        // настройки, а не разрешение пускать всех
+        putenv('TEST_EMPTY_TOKEN');
+
+        assertSame(
+            IncomingHook::REJECTED,
+            Incoming::receive('test', Request::create('POST', '/api/v1/hooks/test', ['event' => 'ping']))
+        );
+
+        // И в журнале видно, что дело в нас, а не в отправителе
+        $hook = assertNotNull(IncomingHook::query()->orderBy('id', 'desc')->first());
+
+        assertContains('переменная TEST_EMPTY_TOKEN пуста', (string) $hook->raw('error'));
+
+        Incoming::reset();
+    });
+});
+
+test('входящие вебхуки: токен берётся и из .env, а не только из окружения', function (): void {
+    withOwnDatabase(static function (): void {
+        Incoming::reset();
+
+        $seen = false;
+
+        Incoming::register('env', 'Из .env', 'TEST_ENV_HOOK_TOKEN', static function () use (&$seen): void {
+            $seen = true;
+        });
+
+        // В окружении процесса переменной нет — так и бывает, когда токен просто
+        // вписали в .env, а не экспортировали в среду
+        putenv('TEST_ENV_HOOK_TOKEN');
+
+        $file = APP_ROOT . '/var/incoming-token-test.env';
+
+        file_put_contents($file, "TEST_ENV_HOOK_TOKEN=из-файла\n");
+        Env::load($file, true);
+        unlink($file);
+
+        $request = Request::create('GET', '/api/v1/hooks/env', [], ['event' => 'ping', 'token' => 'из-файла']);
+
+        assertSame(IncomingHook::DONE, Incoming::receive('env', $request));
+        assertTrue($seen);
+
         Incoming::reset();
     });
 });

@@ -39,9 +39,30 @@ final class WebhooksController extends Controller
             'stats'    => WebhookDelivery::stats(),
             'filters'  => $filters,
             // Входящие — обратная сторона: эти посылки присылают нам
-            'incoming' => IncomingHook::query()->orderBy('id', 'desc')->limit(20)->get(),
+            'incoming' => IncomingHook::query()->orderBy('id', 'desc')->limit(5)->get(),
             'sources'  => Incoming::sources(),
         ], 'Вебхуки');
+    }
+
+    /**
+     * Все входящие посылки: страницами и с отбором. В разделе вебхуков
+     * показаны только последние — этого хватает, пока ничего не сломалось.
+     */
+    public function incoming(Request $request): Response
+    {
+        $filters = $this->filters($request, [
+            Filter::select('status', 'Состояние', IncomingHook::LABELS),
+            Filter::text('source', 'Источник', 'source', 'billing'),
+            Filter::search('q', 'Поиск', ['event', 'error', 'ip'], 'событие, ошибка или адрес'),
+            Filter::dates('when', 'Когда', 'created_at'),
+        ])->sortable(['id', 'created_at'], 'id');
+
+        return $this->view('admin/incoming', [
+            'active'  => 'webhooks',
+            'page'    => $filters->apply(IncomingHook::query())->paginate($this->page($request), $this->perPage()),
+            'filters' => $filters,
+            'sources' => Incoming::sources(),
+        ], 'Входящие вебхуки');
     }
 
     public function create(): Response

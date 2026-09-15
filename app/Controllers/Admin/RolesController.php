@@ -19,11 +19,14 @@ use Rsgrinko\Proton\Support\Audit;
  */
 final class RolesController extends Controller
 {
-    public function index(): Response
+    public function index(Request $request): Response
     {
+        $page = Role::query()->orderBy('id')->paginate($this->page($request), $this->perPage());
+
         return $this->view('admin/roles', [
             'active' => 'roles',
-            'roles'  => Role::query()->orderBy('id')->get(),
+            'roles'  => $page['items'],
+            'page'   => $page,
         ], 'Роли');
     }
 

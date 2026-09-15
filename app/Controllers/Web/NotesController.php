@@ -11,6 +11,7 @@ use Rsgrinko\Proton\Access\Viewer;
 use Rsgrinko\Proton\Database\Model\Query;
 use Rsgrinko\Proton\Database\Model\RecordNotFound;
 use Rsgrinko\Proton\Events\Events;
+use Rsgrinko\Proton\Files\Attachment;
 use Rsgrinko\Proton\Files\Storage;
 use Rsgrinko\Proton\Http\Controller;
 use Rsgrinko\Proton\Http\Request;
@@ -288,9 +289,10 @@ final class NotesController extends Controller
 
         $note->setAttribute('user_id', $viewer->id());
 
-        $this->attachFile($request, $note);
-
         $note->save();
+
+        // Вложения прикладываются после сохранения: до него у записи нет id
+        $this->attachFile($request, $note);
 
         Audit::created('note', $note->id(), 'заметка «' . (string) $note->title . '»');
 
@@ -307,9 +309,10 @@ final class NotesController extends Controller
         $note = $this->find($id, $scope);
 
         return $this->view('notes/show', [
-            'active' => 'notes',
-            'note'   => $note,
-            'author' => $note->author,
+            'active'      => 'notes',
+            'note'        => $note,
+            'author'      => $note->author,
+            'attachments' => Attachment::of('note', $note->id()),
         ], (string) $note->title);
     }
 
@@ -370,7 +373,8 @@ final class NotesController extends Controller
 
         $this->authorize('note.delete', $note);
 
-        // Мягкое удаление: запись остаётся в базе с отметкой времени
+        // Мягкое удаление: запись остаётся в базе с отметкой времени, а файлы
+        // вложений живут дальше — вернём заметку из корзины, вернутся и они
         $note->delete();
 
         Audit::deleted('note', $note->id(), 'заметка «' . (string) $note->title . '»');
@@ -443,26 +447,80 @@ final class NotesController extends Controller
      */
     private function attachFile(Request $request, Note $note): void
     {
-        $file = $request->file('attachment');
+        $files = $request->files('attachment');
 
-        if ($file === null || !$file->uploaded()) {
+        if ($files === [] || $note->id() === 0) {
             return;
         }
 
-        try {
-            $stored = Storage::put($file, 'notes');
-        } catch (ProtonException $e) {
-            $this->flash($e->getMessage(), 'error');
+        foreach ($files as $file) {
+            try {
+                Attachment::attach($file, 'note', $note->id(), (int) $note->raw('user_id'));
+            } catch (ProtonException $e) {
+                // Один негодный файл не должен отменять остальные и саму правку
+                $this->flash($file->name() . ': ' . $e->getMessage(), 'error');
+            }
+        }
+    }
 
-            return;
+    /**
+     * Отдаёт вложение. Хранилище лежит вне public, поэтому файлы отдаёт код:
+     * присланный «аватар.php» не должен стать скриптом на сайте.
+     */
+    public function attachment(int $id, int $attachment, Scope $scope): Response
+    {
+        $note = $this->find($id, $scope);
+
+        /** @var Attachment|null $found */
+        $found = Attachment::query()
+            ->where('entity', 'note')
+            ->where('entity_id', (string) $note->id())
+            ->where('id', $attachment)
+            ->first();
+
+        if ($found === null || !Storage::exists((string) $found->raw('path'))) {
+            $this->flash('Файла нет', 'error');
+
+            return $this->redirect('notes.show', ['id' => $note->id()]);
         }
 
-        $previous = (string) $note->raw('file_path');
+        return Response::download(
+            Storage::read((string) $found->raw('path')),
+            (string) $found->raw('name'),
+            (string) $found->raw('mime') ?: 'application/octet-stream'
+        );
+    }
 
-        $note->forceFill(['file_path' => $stored['path'], 'file_name' => $stored['name']]);
+    /**
+     * Убрать вложение заметки.
+     */
+    public function detach(Request $request, int $id, Scope $scope): Response
+    {
+        $note = $this->find($id, $scope);
 
-        if ($previous !== '' && $previous !== $stored['path']) {
-            Storage::delete($previous);
+        $this->authorize('note.edit', $note);
+
+        /** @var Attachment|null $attachment */
+        $attachment = Attachment::query()
+            ->where('entity', 'note')
+            ->where('entity_id', (string) $note->id())
+            ->where('id', (int) $request->input('attachment', 0))
+            ->first();
+
+        if ($attachment === null) {
+            $this->flash('Вложения нет', 'error');
+
+            return $this->redirect('notes.show', ['id' => $note->id()]);
         }
+
+        $name = (string) $attachment->raw('name');
+
+        $attachment->remove();
+
+        Audit::action('note', $note->id(), 'убрано вложение «' . $name . '»');
+
+        $this->flash('Вложение убрано');
+
+        return $this->redirect('notes.show', ['id' => $note->id()]);
     }
 }

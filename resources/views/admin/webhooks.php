@@ -113,7 +113,12 @@ foreach ($groups as $group) {
 </div>
 
 <div class="card">
-    <h2>Входящие посылки</h2>
+    <div class="row">
+        <h2 style="margin: 0;">Входящие посылки</h2>
+        <span class="spacer"></span>
+        <a class="btn small" href="<?= View::e(View::route('admin.webhooks.incoming')) ?>">Все входящие</a>
+    </div>
+
 
     <p class="muted small">
         Источники объявляются в <span class="mono">config/incoming.php</span>, адрес —

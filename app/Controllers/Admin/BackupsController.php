@@ -21,11 +21,20 @@ use Rsgrinko\Proton\Support\ProtonException;
  */
 final class BackupsController extends Controller
 {
-    public function index(): Response
+    public function index(Request $request): Response
     {
+        // Копий бывает много: ручные накапливаются рядом с суточными
+        $files   = Backup::files();
+        $perPage = $this->perPage();
+        $pages   = max(1, (int) ceil(count($files) / $perPage));
+        $page    = min($this->page($request), $pages);
+
         return $this->view('admin/backups', [
             'active'   => 'backups',
-            'files'    => Backup::files(),
+            'files'    => array_slice($files, ($page - 1) * $perPage, $perPage),
+            'total'    => count($files),
+            'page'     => $page,
+            'pages'    => $pages,
             'keep'     => (int) Config::get('backup.keep', 7),
             'schedule' => trim((string) Config::get('backup.schedule', '')),
             'dir'      => Backup::directory(),

@@ -22,6 +22,12 @@ return static function (Router $router): void {
             ->middleware('throttle:600,60')
             ->name('api.hooks');
 
+        // Те же вебхуки через GET: так шлют системы, которые не умеют POST.
+        // Тела у такой посылки нет — всё в параметрах адреса
+        $router->get('/hooks/{source}', [HooksController::class, 'receive'])
+            ->middleware('throttle:600,60')
+            ->name('api.hooks.get');
+
         // Живость сервиса дёргает мониторинг по расписанию — без ключа
         $router->get('/health', [SystemController::class, 'health'])->name('api.health');
 

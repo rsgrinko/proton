@@ -102,5 +102,12 @@ use Rsgrinko\Proton\View\View;
                 <?php } ?>
             </table>
         </div>
+
+        <?= View::partial('pagination', [
+            'route'  => 'admin.backups',
+            'page'   => $page,
+            'pages'  => $pages,
+            'params' => [],
+        ]) ?>
     <?php } ?>
 </div>

@@ -39,8 +39,8 @@ $action = $isNew
         <?php } ?>
 
         <label>
-            <span>Файл<?= $note->hasFile() ? ' (сейчас: ' . View::e((string) $note->raw('file_name')) . ')' : '' ?></span>
-            <input type="file" name="attachment">
+            <span>Файлы (можно несколько)</span>
+            <input type="file" name="attachment[]" multiple>
         </label>
 
         <div class="row">

@@ -173,7 +173,27 @@ final class Request
 
     public function file(string $key): ?UploadedFile
     {
-        return $this->files[$key] ?? null;
+        return $this->files[$key] ?? $this->files[$key . '.0'] ?? null;
+    }
+
+    /**
+     * Все файлы одного поля: <input type="file" name="files[]" multiple>
+     * приходит списком с ключами вида «files.0», «files.1».
+     *
+     * @return array<int, UploadedFile>
+     */
+    public function files(string $key): array
+    {
+        $found = [];
+
+        foreach ($this->files as $field => $file) {
+            if ($field === $key || str_starts_with($field, $key . '.')) {
+                $found[] = $file;
+            }
+        }
+
+        // Пустые поля браузер присылает тоже: незачем разбираться с ними дальше
+        return array_values(array_filter($found, static fn (UploadedFile $file): bool => $file->uploaded()));
     }
 
     /**

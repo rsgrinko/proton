@@ -7,6 +7,7 @@ declare(strict_types=1);
  *
  * @var \App\Models\Note $note
  * @var \Rsgrinko\Proton\Models\User|null $author
+ * @var array<int, \Rsgrinko\Proton\Files\Attachment> $attachments
  */
 
 use Rsgrinko\Proton\Support\SignedUrl;
@@ -74,6 +75,38 @@ use Rsgrinko\Proton\View\View;
         </dl>
     </div>
 </div>
+
+<?php if ($attachments !== []) { ?>
+    <div class="card">
+        <h2>Вложения (<?= count($attachments) ?>)</h2>
+
+        <div class="attachments">
+            <?php foreach ($attachments as $attachment) { ?>
+                <?php $url = View::route('notes.attachment', ['id' => $note->id(), 'attachment' => $attachment->id()]); ?>
+                <div class="attachment">
+                    <a href="<?= View::e($url) ?>">
+                        <?php if ($attachment->isImage()) { ?>
+                            <img src="<?= View::e($url) ?>" alt="<?= View::e((string) $attachment->raw('name')) ?>">
+                        <?php } else { ?>
+                            <span class="file-icon"><?= View::e(strtoupper(pathinfo((string) $attachment->raw('name'), PATHINFO_EXTENSION)) ?: 'файл') ?></span>
+                        <?php } ?>
+                    </a>
+
+                    <div class="small break"><?= View::e((string) $attachment->raw('name')) ?></div>
+                    <div class="muted small"><?= View::e($attachment->readableSize()) ?></div>
+
+                    <?php if (View::can('note.edit', $note)) { ?>
+                        <form method="post" action="<?= View::e(View::route('notes.detach', ['id' => $note->id()])) ?>">
+                            <?= View::csrf() ?>
+                            <input type="hidden" name="attachment" value="<?= $attachment->id() ?>">
+                            <button type="submit" class="small danger" data-confirm="Убрать вложение? Файл удалится.">Убрать</button>
+                        </form>
+                    <?php } ?>
+                </div>
+            <?php } ?>
+        </div>
+    </div>
+<?php } ?>
 
 <?= View::partial('history', ['entity' => 'note', 'id' => $note->id()]) ?>
 

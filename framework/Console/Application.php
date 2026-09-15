@@ -35,6 +35,7 @@ final class Application
             Commands\RouteListCommand::class,
             Commands\CacheClearCommand::class,
             Commands\LogsPurgeCommand::class,
+            Commands\FilesOrphansCommand::class,
         ],
         'Разработка' => [
             Commands\ServeCommand::class,
