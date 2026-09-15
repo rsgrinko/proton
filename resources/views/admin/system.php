@@ -7,6 +7,8 @@ declare(strict_types=1);
  *
  * @var array<int, array{level: string, title: string, value: string, hint: string}> $checks
  * @var string $health
+ * @var array{requests: int, average_ms: float, errors: int, slow: int, hours: int} $metrics
+ * @var array<string, int|string> $storage
  * @var array<string, int> $queue
  * @var array<int, array{name: string, interval: int, at: string, last: string}> $schedule
  * @var array<string, int> $events
@@ -15,6 +17,7 @@ declare(strict_types=1);
  */
 
 use Rsgrinko\Proton\Support\Diagnostics;
+use Rsgrinko\Proton\Support\Str;
 use Rsgrinko\Proton\View\View;
 
 $badges = [Diagnostics::OK => 'ok', Diagnostics::WARN => 'warn', Diagnostics::ERROR => 'error'];
@@ -37,6 +40,38 @@ $labels = [Diagnostics::OK => 'в порядке', Diagnostics::WARN => 'вни�
                 <?php } ?>
             </div>
         <?php } ?>
+    </div>
+</div>
+
+<div class="card">
+    <h2>Показатели за <?= (int) $metrics['hours'] ?> ч</h2>
+
+    <div class="table-wrap">
+        <table>
+            <tr>
+                <td>Запросов</td>
+                <td class="right"><?= (int) $metrics['requests'] ?></td>
+                <td>Среднее время ответа</td>
+                <td class="right"><?= View::e((string) $metrics['average_ms']) ?> мс</td>
+            </tr>
+            <tr>
+                <td>Ошибок 5xx</td>
+                <td class="right"><?= (int) $metrics['errors'] ?></td>
+                <td>Медленных ответов</td>
+                <td class="right"><?= (int) $metrics['slow'] ?></td>
+            </tr>
+            <tr>
+                <td>База</td>
+                <td class="right"><?= View::e(Str::bytes((int) $storage['database_bytes'])) ?></td>
+                <td>Каталог var</td>
+                <td class="right"><?= View::e(Str::bytes((int) $storage['var_bytes'])) ?></td>
+            </tr>
+            <tr>
+                <td>Свободно на диске</td>
+                <td class="right"><?= View::e(Str::bytes((int) $storage['free_bytes'])) ?></td>
+                <td colspan="2" class="muted small">Счётчики запросов живут в кэше: очистка кэша их обнуляет</td>
+            </tr>
+        </table>
     </div>
 </div>
 

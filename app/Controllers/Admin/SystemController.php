@@ -15,6 +15,7 @@ use Rsgrinko\Proton\Queue\Scheduler;
 use Rsgrinko\Proton\Queue\Worker;
 use Rsgrinko\Proton\Support\Audit;
 use Rsgrinko\Proton\Support\Diagnostics;
+use Rsgrinko\Proton\Support\Metrics;
 
 /**
  * Состояние: самопроверка, очередь, расписание и кнопки обслуживания.
@@ -33,6 +34,8 @@ final class SystemController extends Controller
             'active'   => 'system',
             'checks'   => $checks,
             'health'   => Diagnostics::worst($checks),
+            'metrics'  => Metrics::requests(24),
+            'storage'  => Metrics::storage(),
             'queue'    => Queue::stats(),
             'schedule' => Scheduler::tasks(),
             'events'   => Events::registered(),

@@ -174,7 +174,7 @@ test('http: все страницы администратора отвечаю�
         '/admin/roles', '/admin/roles/new', '/admin/roles/' . (Role::admin()?->id() ?? 1),
         '/admin/tokens', '/admin/audit', '/admin/logs', '/admin/system',
         '/admin/webhooks', '/admin/webhooks/new', '/admin/webhooks/' . httpWebhook()->id(),
-        '/admin/settings', '/admin/backups',
+        '/admin/settings', '/admin/backups', '/admin/reports',
     ];
 
     foreach ($paths as $path) {
@@ -186,7 +186,7 @@ test('http: обычный пользователь не попадает в с�
     $closed = [
         '/admin', '/admin/users', '/admin/roles', '/admin/tokens',
         '/admin/audit', '/admin/logs', '/admin/system', '/admin/webhooks', '/admin/settings',
-        '/admin/backups',
+        '/admin/backups', '/admin/reports',
     ];
 
     foreach ($closed as $path) {
@@ -358,6 +358,63 @@ test('http: подписка на события заводится и пров�
     assertSame(0, WebhookDelivery::query()->where('webhook_id', $webhook->id())->count(), 'журнал ушёл вместе с подпиской');
 });
 
+test('http: список фильтруется и сортируется параметрами адреса', function (): void {
+    $admin = httpAdmin();
+    $user  = httpUser();
+
+    // Поиск по логину: чужой строки в ответе быть не должно
+    $response = httpRequest('GET', '/admin/users', $admin, [], ['q' => (string) $admin->login]);
+
+    assertStatus(200, $response);
+    assertContains((string) $admin->login, $response->body());
+    assertNotContains((string) $user->login, $response->body());
+
+    // Отбор по роли и по признаку «активен» работает вместе с поиском
+    $response = httpRequest('GET', '/admin/users', $admin, [], [
+        'q'       => (string) $admin->login,
+        'role_id' => (string) $user->raw('role_id'),
+    ]);
+
+    // Логин админа остался в поле поиска, поэтому смотрим на ссылку карточки
+    assertNotContains('/admin/users/' . $admin->id() . '"', $response->body());
+
+    // Сортировка по чужой колонке ничего не роняет — её просто нет в белом списке
+    $response = httpRequest('GET', '/admin/users', $admin, [], ['sort' => 'password_hash', 'dir' => 'asc']);
+
+    assertStatus(200, $response);
+    assertNotContains('password_hash', $response->body());
+
+    $response = httpRequest('GET', '/admin/users', $admin, [], ['sort' => 'login', 'dir' => 'asc']);
+
+    assertStatus(200, $response);
+    assertContains('sort=login', $response->body(), 'ссылки страниц тащат сортировку за собой');
+});
+
+test('http: список выгружается файлом с учётом фильтров', function (): void {
+    $admin = httpAdmin();
+
+    $response = httpRequest('GET', '/admin/users/export', $admin, [], ['q' => (string) $admin->login]);
+
+    assertStatus(200, $response);
+    assertContains('attachment', $response->header('Content-Disposition'));
+    assertContains('users-', $response->header('Content-Disposition'));
+    assertContains((string) $admin->login, $response->body());
+    assertNotContains((string) httpUser()->login, $response->body(), 'фильтр действует и в файле');
+
+    // Выгрузка уносит данные наружу, поэтому попадает в журнал
+    $entry = Rsgrinko\Proton\Models\AuditEntry::query()
+        ->where('entity', 'user')
+        ->orderBy('id', 'desc')
+        ->first();
+
+    assertContains('выгружен список', (string) assertNotNull($entry)->raw('description'));
+
+    // Предел строк — не совет: за ним выгрузка отказывается и возвращает в список
+    withConfig(['export.max_rows' => 1], static function () use ($admin): void {
+        assertStatus(302, httpRequest('GET', '/admin/users/export', $admin));
+    });
+});
+
 test('http: пользователь удаляется из панели, а себя удалить нельзя', function (): void {
     $victim = User::register('http_victim_' . bin2hex(random_bytes(3)), 'секрет123', [
         'email'   => 'victim' . bin2hex(random_bytes(3)) . '@example.com',
@@ -423,6 +480,23 @@ test('api: заметки создаются, читаются и удаляют
     assertStatus(200, httpRequest('PATCH', '/api/v1/notes/' . $id, null, ['title' => 'Изменено'], [], $headers));
     assertStatus(200, httpRequest('DELETE', '/api/v1/notes/' . $id, null, [], [], $headers));
     assertStatus(404, httpRequest('GET', '/api/v1/notes/' . $id, null, [], [], $headers));
+});
+
+test('api: показатели отдаются по ключу и только с правом', function (): void {
+    $issued = ApiToken::issue('для мониторинга', httpAdmin()->id());
+
+    $response = httpRequest('GET', '/api/v1/metrics', null, [], [], ['authorization' => 'Bearer ' . $issued['key']]);
+
+    assertStatus(200, $response);
+    assertContains('"requests"', $response->body());
+    assertContains('"queue"', $response->body());
+
+    // Ключ обычного пользователя показатели не получает
+    $limited = ApiToken::issue('без права', httpUser()->id());
+
+    assertStatus(403, httpRequest('GET', '/api/v1/metrics', null, [], [], [
+        'authorization' => 'Bearer ' . $limited['key'],
+    ]));
 });
 
 test('api: здоровье отвечает без ключа', function (): void {

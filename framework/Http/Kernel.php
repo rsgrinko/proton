@@ -16,6 +16,7 @@ use Rsgrinko\Proton\Http\Middleware\Throttle;
 use Rsgrinko\Proton\Http\Middleware\VerifyCsrf;
 use Rsgrinko\Proton\Support\Config;
 use Rsgrinko\Proton\Support\Logger;
+use Rsgrinko\Proton\Support\Metrics;
 use Rsgrinko\Proton\Support\ProtonException;
 use Rsgrinko\Proton\Support\RequestId;
 use Rsgrinko\Proton\Support\Settings;
@@ -43,6 +44,8 @@ final class Kernel
 
     public function handle(Request $request): Response
     {
+        $started = microtime(true);
+
         // Сквозная цепочка: клиент прислал свою или заводим новую
         RequestId::set($request->header(RequestId::HEADER));
 
@@ -50,14 +53,24 @@ final class Kernel
         Settings::apply();
 
         try {
-            return $this->finish($this->router()->dispatch($request));
+            $response = $this->finish($this->router()->dispatch($request));
         } catch (RecordNotFound $e) {
-            return $this->finish($this->notFound($request, $e));
+            $response = $this->finish($this->notFound($request, $e));
         } catch (ValidationException $e) {
-            return $this->finish($this->invalid($request, $e));
+            $response = $this->finish($this->invalid($request, $e));
         } catch (Throwable $e) {
-            return $this->finish($this->crashed($request, $e));
+            $response = $this->finish($this->crashed($request, $e));
         }
+
+        // Счётчики пишутся после ответа и молча: сорванный подсчёт не повод
+        // портить страницу
+        try {
+            Metrics::track((microtime(true) - $started) * 1000, $response->status());
+        } catch (Throwable $e) {
+            $this->logger->warning('Не удалось записать показатели', ['error' => $e->getMessage()]);
+        }
+
+        return $response;
     }
 
     /**

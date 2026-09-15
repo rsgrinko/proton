@@ -20,6 +20,7 @@ return static function (Router $router): void {
 
         $router->group(['middleware' => ['api', 'throttle:120,60']], function (Router $router): void {
             $router->get('/me', [SystemController::class, 'me'])->name('api.me');
+            $router->get('/metrics', [SystemController::class, 'metrics'])->name('api.metrics');
 
             $router->get('/notes', [NotesController::class, 'index'])->name('api.notes.index');
             $router->post('/notes', [NotesController::class, 'store'])->name('api.notes.store');

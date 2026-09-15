@@ -8,6 +8,7 @@ use Rsgrinko\Proton\Backup\BackupJob;
 use Rsgrinko\Proton\Models\Setting;
 use Rsgrinko\Proton\Support\Config;
 use Rsgrinko\Proton\Support\Logger;
+use Rsgrinko\Proton\Support\Monitor;
 use Throwable;
 
 /**
@@ -173,6 +174,17 @@ final class Scheduler
             self::dailyAt($at, 'backup:database', static function (): void {
                 Queue::push(BackupJob::class);
             });
+        }
+
+        // Присмотр за порогами: о беде лучше узнать от приложения, чем от людей
+        if ((bool) Config::get('monitor.enabled', true)) {
+            self::every(
+                max(60, (int) Config::get('monitor.interval', 300)),
+                'monitor:check',
+                static function (): void {
+                    Monitor::check();
+                }
+            );
         }
     }
 }

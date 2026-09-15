@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Controllers\Api;
 
+use Rsgrinko\Proton\Access\Permission;
 use Rsgrinko\Proton\Access\Viewer;
 use Rsgrinko\Proton\Database\Connection;
 use Rsgrinko\Proton\Http\Response;
@@ -11,6 +12,7 @@ use Rsgrinko\Proton\Models\ApiToken;
 use Rsgrinko\Proton\Models\User;
 use Rsgrinko\Proton\Queue\Queue;
 use Rsgrinko\Proton\Support\Config;
+use Rsgrinko\Proton\Support\Metrics;
 use Throwable;
 
 /**
@@ -37,6 +39,19 @@ final class SystemController extends ApiController
                 'mask' => $token->mask(),
             ],
         ]);
+    }
+
+    /**
+     * Показатели работы для мониторинга. В отличие от /health, здесь цифры
+     * о внутренностях, поэтому нужен ключ и право system.view.
+     */
+    public function metrics(Viewer $viewer): Response
+    {
+        if (!$viewer->can(Permission::SYSTEM_VIEW)) {
+            return Response::error('Нет доступа к показателям', 403);
+        }
+
+        return $this->data(Metrics::snapshot());
     }
 
     /**
