@@ -88,7 +88,7 @@ $report = View::takeStash('import');
                         <td class="hide-sm muted small"><?= View::e($note->excerpt(80)) ?></td>
                         <td class="hide-sm muted small"><?= View::e(View::ago((string) $note->raw('created_at'))) ?></td>
                         <td class="right">
-                            <?php if (View::can('notes.manage')) { ?>
+                            <?php if (View::can('note.edit', $note)) { ?>
                                 <a class="btn small" href="<?= View::e(View::route('notes.edit', ['id' => $note->id()])) ?>">Править</a>
                             <?php } ?>
                         </td>

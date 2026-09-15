@@ -9,15 +9,18 @@ declare(strict_types=1);
  * @var \Rsgrinko\Proton\Models\User|null $author
  */
 
+use Rsgrinko\Proton\Support\SignedUrl;
 use Rsgrinko\Proton\View\View;
 ?>
 <div class="row">
     <h1 style="margin: 0;"><?= View::e((string) $note->title) ?></h1>
     <span class="spacer"></span>
 
-    <?php if (View::can('notes.manage')) { ?>
+    <?php if (View::can('note.edit', $note)) { ?>
         <a class="btn" href="<?= View::e(View::route('notes.edit', ['id' => $note->id()])) ?>">Править</a>
+    <?php } ?>
 
+    <?php if (View::can('note.delete', $note)) { ?>
         <form method="post" action="<?= View::e(View::route('notes.delete', ['id' => $note->id()])) ?>">
             <?= View::csrf() ?>
             <button type="submit" class="danger">Удалить</button>
@@ -58,6 +61,12 @@ use Rsgrinko\Proton\View\View;
             <dd>
                 <?php if ($note->hasFile()) { ?>
                     <a href="<?= View::e(View::route('notes.file', ['id' => $note->id()])) ?>"><?= View::e((string) $note->raw('file_name')) ?></a>
+
+                    <?php $shared = SignedUrl::absolute('notes.file.shared', ['id' => $note->id()], 86400); ?>
+                    <div class="muted small" style="margin-top: 6px;">
+                        Ссылка на сутки, вход по ней не нужен:
+                        <?= View::copy($shared, 'скопировать') ?>
+                    </div>
                 <?php } else { ?>
                     —
                 <?php } ?>

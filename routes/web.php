@@ -47,6 +47,12 @@ return static function (Router $router): void {
             $router->post('/password/reset/{token}', [PasswordController::class, 'reset']);
         });
 
+        // Файл по подписанной ссылке: вход не нужен, разрешение доказывает
+        // сама подпись, срок жизни зашит в адрес
+        $router->get('/files/notes/{id:\d+}', [NotesController::class, 'sharedFile'])
+            ->middleware('signed')
+            ->name('notes.file.shared');
+
         // Подтверждение почты открыто и вошедшему: письмо могли открыть позже
         $router->get('/verify/{token}', [RegisterController::class, 'verify'])->name('verify');
 

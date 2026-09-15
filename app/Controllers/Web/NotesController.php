@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace App\Controllers\Web;
 
 use App\Models\Note;
+use Rsgrinko\Proton\Access\Policy;
 use Rsgrinko\Proton\Access\Scope;
 use Rsgrinko\Proton\Access\Viewer;
 use Rsgrinko\Proton\Database\Model\Query;
+use Rsgrinko\Proton\Database\Model\RecordNotFound;
 use Rsgrinko\Proton\Events\Events;
 use Rsgrinko\Proton\Files\Storage;
 use Rsgrinko\Proton\Http\Controller;
@@ -179,15 +181,21 @@ final class NotesController extends Controller
 
     public function edit(int $id, Scope $scope): Response
     {
+        $note = $this->find($id, $scope);
+
+        $this->authorize('note.edit', $note);
+
         return $this->view('notes/form', [
             'active' => 'notes',
-            'note'   => $this->find($id, $scope),
+            'note'   => $note,
         ], 'Правка заметки');
     }
 
     public function update(Request $request, int $id, Scope $scope): Response
     {
         $note = $this->find($id, $scope);
+
+        $this->authorize('note.edit', $note);
 
         $data = $this->validate($request, [
             'title'  => 'required|max:191',
@@ -196,6 +204,12 @@ final class NotesController extends Controller
         ], ['title' => 'Название', 'body' => 'Текст']);
 
         $before = ['title' => $note->title, 'body' => $note->body, 'pinned' => $note->raw('pinned')];
+
+        // Закрепление — отдельное правило: у кого его нет, у того в форме нет
+        // и галочки, и молчаливо открепить заметку такая форма не должна
+        if (Policy::denies('note.pin', $note)) {
+            unset($data['pinned']);
+        }
 
         $note->fill($data);
 
@@ -219,6 +233,8 @@ final class NotesController extends Controller
     public function delete(int $id, Scope $scope): Response
     {
         $note = $this->find($id, $scope);
+
+        $this->authorize('note.delete', $note);
 
         // Мягкое удаление: запись остаётся в базе с отметкой времени
         $note->delete();
@@ -244,6 +260,26 @@ final class NotesController extends Controller
             $this->flash('Файла нет', 'error');
 
             return $this->redirect('notes.show', ['id' => $note->id()]);
+        }
+
+        return Response::download(
+            Storage::read((string) $note->raw('file_path')),
+            (string) $note->raw('file_name')
+        );
+    }
+
+    /**
+     * Тот же файл, но по подписанной ссылке: вход не нужен, потому что право
+     * на скачивание доказывает сама подпись. Ссылку выдаёт карточка заметки,
+     * срок жизни — сутки.
+     */
+    public function sharedFile(int $id): Response
+    {
+        /** @var Note|null $note */
+        $note = Note::query()->where('id', $id)->first();
+
+        if ($note === null || !$note->hasFile() || !Storage::exists((string) $note->raw('file_path'))) {
+            throw new RecordNotFound('Файла нет');
         }
 
         return Response::download(

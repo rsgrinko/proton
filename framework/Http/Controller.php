@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Rsgrinko\Proton\Http;
 
+use Rsgrinko\Proton\Access\AccessDenied;
+use Rsgrinko\Proton\Access\Policy;
 use Rsgrinko\Proton\Database\Model\Model;
 use Rsgrinko\Proton\Database\Model\RecordNotFound;
 use Rsgrinko\Proton\Database\Query\Builder;
@@ -91,6 +93,20 @@ abstract class Controller
     protected function validate(Request $request, array $rules, array $labels = []): array
     {
         return Validator::make($request->all(), $rules, $labels)->validate();
+    }
+
+    /**
+     * Правило на запись: можно ли этому человеку трогать именно её.
+     * Нельзя — 403, дальше код не идёт.
+     *
+     * Право у группы маршрутов решает, пускать ли в раздел; здесь решается
+     * судьба конкретной строки, поэтому вызов стоит рядом с ней.
+     */
+    protected function authorize(string $ability, mixed $subject = null): void
+    {
+        if (Policy::denies($ability, $subject)) {
+            throw new AccessDenied('С этой записью так нельзя');
+        }
     }
 
     /**

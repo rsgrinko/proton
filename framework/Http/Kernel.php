@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Rsgrinko\Proton\Http;
 
+use Rsgrinko\Proton\Access\AccessDenied;
 use Rsgrinko\Proton\Auth\Auth;
 use Rsgrinko\Proton\Auth\Csrf;
 use Rsgrinko\Proton\Database\Model\RecordNotFound;
@@ -12,6 +13,7 @@ use Rsgrinko\Proton\Http\Middleware\Authenticate;
 use Rsgrinko\Proton\Http\Middleware\Can;
 use Rsgrinko\Proton\Http\Middleware\Guest;
 use Rsgrinko\Proton\Http\Middleware\Install;
+use Rsgrinko\Proton\Http\Middleware\Signed;
 use Rsgrinko\Proton\Http\Middleware\Throttle;
 use Rsgrinko\Proton\Http\Middleware\VerifyCsrf;
 use Rsgrinko\Proton\Support\Config;
@@ -54,6 +56,8 @@ final class Kernel
 
         try {
             $response = $this->finish($this->router()->dispatch($request));
+        } catch (AccessDenied $e) {
+            $response = $this->finish($this->denied($request, $e));
         } catch (RecordNotFound $e) {
             $response = $this->finish($this->notFound($request, $e));
         } catch (ValidationException $e) {
@@ -91,7 +95,8 @@ final class Kernel
             ->middleware('can', new Can())
             ->middleware('api', new ApiKey())
             ->middleware('throttle', new Throttle())
-            ->middleware('install', new Install());
+            ->middleware('install', new Install())
+            ->middleware('signed', new Signed());
 
         foreach ((array) Config::get('routes', ['routes/web.php']) as $file) {
             $router->load(APP_ROOT . '/' . ltrim((string) $file, '/'));
@@ -109,6 +114,18 @@ final class Kernel
     {
         return Csrf::applyCookie(Auth::applyCookies($response))
             ->withHeader(RequestId::HEADER, RequestId::current());
+    }
+
+    /**
+     * Правило на запись не пустило.
+     */
+    private function denied(Request $request, AccessDenied $e): Response
+    {
+        if ($request->wantsJson()) {
+            return Response::error($e->getMessage(), 403);
+        }
+
+        return Response::html(View::render('errors/403', ['message' => $e->getMessage()], 'Нет доступа'), 403);
     }
 
     private function notFound(Request $request, RecordNotFound $e): Response

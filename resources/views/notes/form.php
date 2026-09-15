@@ -31,10 +31,12 @@ $action = $isNew
             <textarea name="body"><?= View::e((string) $note->body) ?></textarea>
         </label>
 
-        <label class="inline" style="margin-bottom: 12px;">
-            <input type="checkbox" name="pinned" value="1" <?= $note->pinned ? 'checked' : '' ?>>
-            <span>Закрепить наверху списка</span>
-        </label>
+        <?php if (View::can('note.pin', $note)) { ?>
+            <label class="inline" style="margin-bottom: 12px;">
+                <input type="checkbox" name="pinned" value="1" <?= $note->pinned ? 'checked' : '' ?>>
+                <span>Закрепить наверху списка</span>
+            </label>
+        <?php } ?>
 
         <label>
             <span>Файл<?= $note->hasFile() ? ' (сейчас: ' . View::e((string) $note->raw('file_name')) . ')' : '' ?></span>

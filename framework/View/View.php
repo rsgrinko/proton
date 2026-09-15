@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Rsgrinko\Proton\View;
 
+use Rsgrinko\Proton\Access\Policy;
 use Rsgrinko\Proton\Access\Viewer;
 use Rsgrinko\Proton\Auth\Auth;
 use Rsgrinko\Proton\Auth\Csrf;
@@ -186,9 +187,13 @@ final class View
      * но полагаться на это нельзя: доступ закрывает прослойка, разметка лишь
      * не дразнит.
      */
-    public static function can(string $permission): bool
+    public static function can(string $permission, mixed $subject = null): bool
     {
-        return self::viewer()->can($permission);
+        // С записью спрашиваем политику: «править свою заметку» — это не право,
+        // а правило на конкретную строку
+        return $subject === null
+            ? self::viewer()->can($permission)
+            : Policy::allows($permission, $subject, self::viewer());
     }
 
     /**
