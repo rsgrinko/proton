@@ -7,6 +7,7 @@ namespace Rsgrinko\Proton\Queue;
 use Rsgrinko\Proton\Cache\Cache;
 use Rsgrinko\Proton\Models\AuditEntry;
 use Rsgrinko\Proton\Models\BlockedIp;
+use Rsgrinko\Proton\Models\IncomingHook;
 use Rsgrinko\Proton\Models\RememberToken;
 use Rsgrinko\Proton\Models\SecurityEvent;
 use Rsgrinko\Proton\Models\Setting;
@@ -237,6 +238,7 @@ final class Worker
             UserSession::purge((int) Config::get('auth.sessions_keep_days', 60));
             AuditEntry::purge((int) Config::get('audit.keep_days', 180));
             WebhookDelivery::purge((int) Config::get('webhooks.keep_days', 14));
+            IncomingHook::purge((int) Config::get('webhooks.keep_days', 14));
             SecurityEvent::purge((int) Config::get('security.keep_days', 60));
             BlockedIp::purgeExpired();
             Trash::purge((int) Config::get('trash.keep_days', 30));

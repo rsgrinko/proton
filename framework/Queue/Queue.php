@@ -28,14 +28,22 @@ final class Queue
     public const DONE    = 'done';
     public const FAILED  = 'failed';
 
+    /** Задача исчерпала попытки: лежит и ждёт, когда разберутся */
+    public const DEAD    = 'dead';
+
     /**
      * Ставит задачу в очередь. Возвращает её номер.
      *
      * @param class-string<Job>    $job
      * @param array<string, mixed> $payload
      */
-    public static function push(string $job, array $payload = [], int $delaySeconds = 0, ?string $queue = null): int
-    {
+    public static function push(
+        string $job,
+        array $payload = [],
+        int $delaySeconds = 0,
+        ?string $queue = null,
+        ?int $priority = null
+    ): int {
         if (!is_subclass_of($job, Job::class)) {
             throw new ProtonException('Задача ' . $job . ' не унаследована от ' . Job::class);
         }
@@ -45,6 +53,7 @@ final class Queue
 
         return Connection::instance()->insert('jobs', [
             'queue'        => $queue ?? $instance->queue(),
+            'priority'     => $priority ?? $instance->priority(),
             'job_class'    => $job,
             'payload'      => (string) json_encode($payload, JSON_UNESCAPED_UNICODE),
             'status'       => self::QUEUED,
@@ -71,9 +80,10 @@ final class Queue
 
             // В MySQL строку сразу запираем: без этого два воркера прочитают одну
             // и ту же задачу между SELECT и UPDATE
+            // Сначала то, что важнее, при равном приоритете — то, что дольше ждёт
             $sql = 'SELECT * FROM jobs
                     WHERE status = :status AND queue = :queue AND available_at <= :now
-                    ORDER BY id LIMIT 1'
+                    ORDER BY priority DESC, id LIMIT 1'
                 . ($db->isSqlite() ? '' : ' FOR UPDATE SKIP LOCKED');
 
             $row = $db->selectOne($sql, ['status' => self::QUEUED, 'queue' => $queue, 'now' => $now]);
@@ -131,7 +141,9 @@ final class Queue
         $again    = $attempts < $max;
 
         Connection::instance()->update('jobs', [
-            'status'       => $again ? self::QUEUED : self::FAILED,
+            // Исчерпала попытки — уходит в «мёртвые»: их разбирают руками,
+            // а не повторяют бесконечно
+            'status'       => $again ? self::QUEUED : self::DEAD,
             'available_at' => $again ? Connection::at($backoff) : (string) $row['available_at'],
             'error'        => mb_substr($error, 0, 1000),
             'finished_at'  => $again ? null : Connection::now(),
@@ -146,7 +158,9 @@ final class Queue
      */
     public static function retry(int $id): bool
     {
+        // Счётчик попыток сбрасывается: иначе мёртвая задача умрёт на первом же круге
         return Connection::instance()->update('jobs', [
+            'attempts'     => 0,
             'status'       => self::QUEUED,
             'attempts'     => 0,
             'available_at' => Connection::now(),
@@ -202,7 +216,7 @@ final class Queue
             return [];
         }
 
-        $result = [self::QUEUED => 0, self::RUNNING => 0, self::DONE => 0, self::FAILED => 0];
+        $result = [self::QUEUED => 0, self::RUNNING => 0, self::DONE => 0, self::FAILED => 0, self::DEAD => 0];
 
         foreach ($db->select('SELECT status, COUNT(*) AS total FROM jobs GROUP BY status') as $row) {
             $result[(string) $row['status']] = (int) $row['total'];

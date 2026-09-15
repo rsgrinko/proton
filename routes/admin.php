@@ -14,6 +14,7 @@ use App\Controllers\Admin\AuditController;
 use App\Controllers\Admin\BackupsController;
 use App\Controllers\Admin\DashboardController;
 use App\Controllers\Admin\LogsController;
+use App\Controllers\Admin\QueueController;
 use App\Controllers\Admin\ReportsController;
 use App\Controllers\Admin\RolesController;
 use App\Controllers\Admin\SecurityController;
@@ -97,6 +98,13 @@ return static function (Router $router): void {
             $router->get('/export', [SecurityController::class, 'export'])->name('admin.security.export');
             $router->post('/block', [SecurityController::class, 'block'])->name('admin.security.block');
             $router->post('/unblock', [SecurityController::class, 'unblock'])->name('admin.security.unblock');
+        });
+
+        $router->group(['prefix' => '/queue', 'middleware' => 'can:' . Permission::SYSTEM_MANAGE], function (Router $router): void {
+            $router->get('', [QueueController::class, 'index'])->name('admin.queue');
+            $router->post('/retry', [QueueController::class, 'retry'])->name('admin.queue.retry');
+            $router->post('/delete', [QueueController::class, 'delete'])->name('admin.queue.delete');
+            $router->post('/run', [QueueController::class, 'run'])->name('admin.queue.run');
         });
 
         // Корзина: разделы объявляет реестр, право проверяется внутри — у каждого

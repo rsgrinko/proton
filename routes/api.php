@@ -9,12 +9,19 @@ declare(strict_types=1);
  * Токен форм здесь не нужен (кук нет), зато стоит ограничение частоты.
  */
 
+use App\Controllers\Api\HooksController;
 use App\Controllers\Api\NotesController;
 use App\Controllers\Api\SystemController;
 use Rsgrinko\Proton\Http\Router;
 
 return static function (Router $router): void {
     $router->group(['prefix' => '/api/v1'], function (Router $router): void {
+        // Входящие вебхуки: ключа у чужой системы нет, вместо него подпись.
+        // Частоту всё равно ограничиваем — источник может залипнуть в цикле
+        $router->post('/hooks/{source}', [HooksController::class, 'receive'])
+            ->middleware('throttle:600,60')
+            ->name('api.hooks');
+
         // Живость сервиса дёргает мониторинг по расписанию — без ключа
         $router->get('/health', [SystemController::class, 'health'])->name('api.health');
 

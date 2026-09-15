@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Rsgrinko\Proton\Queue;
 
 use Rsgrinko\Proton\Backup\BackupJob;
+use Rsgrinko\Proton\Database\Lock;
 use Rsgrinko\Proton\Models\ApiToken;
 use Rsgrinko\Proton\Models\Setting;
 use Rsgrinko\Proton\Models\User;
@@ -81,6 +82,38 @@ final class Scheduler
         }
 
         return $done;
+    }
+
+    /**
+     * Выполнить задачу расписания прямо сейчас, не дожидаясь срока.
+     *
+     * null — такой задачи нет, false — она уже выполняется (её держит воркер
+     * или соседняя вкладка), true — выполнена.
+     */
+    public static function runNow(string $name): ?bool
+    {
+        self::boot();
+
+        if (!isset(self::$tasks[$name])) {
+            return null;
+        }
+
+        $lock = new Lock(null, 'schedule:' . $name);
+
+        // Ждать не будем: раз задача уже идёт, второй прогон не нужен вовсе
+        if (!$lock->acquire(0)) {
+            return false;
+        }
+
+        try {
+            Setting::set(self::key($name), (string) time());
+
+            (self::$tasks[$name]['callback'])();
+        } finally {
+            $lock->release();
+        }
+
+        return true;
     }
 
     /**

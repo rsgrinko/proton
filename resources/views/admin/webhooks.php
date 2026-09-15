@@ -11,6 +11,7 @@ declare(strict_types=1);
  * @var \Rsgrinko\Proton\Support\Filters $filters
  */
 
+use Rsgrinko\Proton\Models\IncomingHook;
 use Rsgrinko\Proton\Models\Webhook;
 use Rsgrinko\Proton\Models\WebhookDelivery;
 use Rsgrinko\Proton\View\View;
@@ -108,5 +109,49 @@ foreach ($groups as $group) {
             'pages'  => $page['pages'],
             'params' => $filters->params(),
         ]) ?>
+    <?php } ?>
+</div>
+
+<div class="card">
+    <h2>Входящие посылки</h2>
+
+    <p class="muted small">
+        Источники объявляются в <span class="mono">config/incoming.php</span>, адрес —
+        <span class="mono">POST /api/v1/hooks/{источник}</span>. Ключа API не нужно:
+        подлинность доказывает подпись. Объявлено источников: <?= count($sources) ?>.
+    </p>
+
+    <?php if ($incoming === []) { ?>
+        <p class="muted small">Пока никто не присылал.</p>
+    <?php } else { ?>
+        <div class="table-wrap">
+            <table class="list">
+                <tr class="head">
+                    <th>Когда</th>
+                    <th>Источник</th>
+                    <th>Событие</th>
+                    <th>Состояние</th>
+                    <th class="hide-sm">Адрес</th>
+                </tr>
+
+                <?php foreach ($incoming as $hook) { ?>
+                    <tr>
+                        <td class="muted small nowrap"><?= View::e(View::date((string) $hook->raw('created_at'))) ?></td>
+                        <td class="small"><?= View::e((string) $hook->raw('source')) ?></td>
+                        <td class="small"><?= View::e((string) $hook->raw('event') ?: '—') ?></td>
+                        <td>
+                            <span class="badge <?= $hook->raw('status') === IncomingHook::DONE ? 'ok' : 'error' ?>">
+                                <?= View::e(IncomingHook::label((string) $hook->raw('status'))) ?>
+                            </span>
+
+                            <?php if (trim((string) $hook->raw('error')) !== '') { ?>
+                                <div class="muted small"><?= View::e((string) $hook->raw('error')) ?></div>
+                            <?php } ?>
+                        </td>
+                        <td class="hide-sm mono small"><?= View::e((string) $hook->raw('ip')) ?></td>
+                    </tr>
+                <?php } ?>
+            </table>
+        </div>
     <?php } ?>
 </div>

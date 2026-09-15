@@ -8,10 +8,12 @@ use Rsgrinko\Proton\Http\Controller;
 use Rsgrinko\Proton\Http\Request;
 use Rsgrinko\Proton\Http\Response;
 use Rsgrinko\Proton\Models\Webhook;
+use Rsgrinko\Proton\Models\IncomingHook;
 use Rsgrinko\Proton\Models\WebhookDelivery;
 use Rsgrinko\Proton\Support\Audit;
 use Rsgrinko\Proton\Support\Filter;
 use Rsgrinko\Proton\View\View;
+use Rsgrinko\Proton\Webhooks\Incoming;
 use Rsgrinko\Proton\Webhooks\Webhooks;
 
 /**
@@ -31,11 +33,14 @@ final class WebhooksController extends Controller
         ])->sortable(['id', 'name'], 'id');
 
         return $this->view('admin/webhooks', [
-            'active'  => 'webhooks',
-            'page'    => $filters->apply(Webhook::query())->paginate($this->page($request), $this->perPage()),
-            'groups'  => Webhooks::groups(),
-            'stats'   => WebhookDelivery::stats(),
-            'filters' => $filters,
+            'active'   => 'webhooks',
+            'page'     => $filters->apply(Webhook::query())->paginate($this->page($request), $this->perPage()),
+            'groups'   => Webhooks::groups(),
+            'stats'    => WebhookDelivery::stats(),
+            'filters'  => $filters,
+            // Входящие — обратная сторона: эти посылки присылают нам
+            'incoming' => IncomingHook::query()->orderBy('id', 'desc')->limit(20)->get(),
+            'sources'  => Incoming::sources(),
         ], 'Вебхуки');
     }
 

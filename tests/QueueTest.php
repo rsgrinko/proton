@@ -116,7 +116,7 @@ test('очередь: ошибка возвращает задачу с пауз
 
         $row = assertNotNull(Connection::instance()->selectOne('SELECT * FROM jobs LIMIT 1'));
 
-        assertSame(Queue::FAILED, (string) $row['status'], 'попытки кончились');
+        assertSame(Queue::DEAD, (string) $row['status'], 'попытки кончились — задача мёртвая');
         assertContains('намеренная поломка', (string) $row['error']);
         assertContains('намеренная поломка', Setting::get('test:job:failed'), 'обработчик отказа зовётся');
     });

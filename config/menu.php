@@ -24,6 +24,7 @@ return [
     ['key' => 'settings',  'label' => 'Настройки',    'route' => 'admin.settings',  'permission' => Permission::SETTINGS_MANAGE],
     ['key' => 'backups',   'label' => 'Копии',        'route' => 'admin.backups',   'permission' => Permission::SYSTEM_MANAGE],
     ['key' => 'reports',   'label' => 'Отчёты',       'route' => 'admin.reports',   'permission' => Permission::SYSTEM_VIEW],
+    ['key' => 'queue',     'label' => 'Очередь',       'route' => 'admin.queue',    'permission' => Permission::SYSTEM_MANAGE],
     ['key' => 'trash',     'label' => 'Корзина',       'route' => 'admin.trash',    'permission' => ''],
     ['key' => 'security',  'label' => 'Безопасность',  'route' => 'admin.security', 'permission' => Permission::SYSTEM_MANAGE],
     ['key' => 'audit',     'label' => 'Журнал',       'route' => 'admin.audit',     'permission' => Permission::AUDIT_VIEW],
