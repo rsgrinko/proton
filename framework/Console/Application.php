@@ -28,6 +28,7 @@ final class Application
             Commands\MigrateCommand::class,
             Commands\MigrateStatusCommand::class,
             Commands\MigrateRollbackCommand::class,
+            Commands\MigrateFreshCommand::class,
             Commands\SeedCommand::class,
             Commands\AppKeyCommand::class,
             Commands\StatusCommand::class,

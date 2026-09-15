@@ -416,6 +416,120 @@ function assertMatches(string $pattern, string $subject, string $message = ''): 
 }
 
 /**
+ * От чьего лица идут дальнейшие запросы. Без аргумента — от гостя.
+ *
+ * Возвращает того же пользователя, поэтому годится и как начало теста:
+ * $user = actingAs(Factory::of(User::class)->create());
+ */
+function actingAs(?Rsgrinko\Proton\Models\User $user = null): ?Rsgrinko\Proton\Models\User
+{
+    Rsgrinko\Proton\Auth\Auth::forget();
+    Rsgrinko\Proton\Auth\Auth::actAs($user);
+
+    $GLOBALS['test_actor'] = $user;
+
+    return $user;
+}
+
+/**
+ * Запрос к ядру от лица actingAs(). Токен формы подставляется сам — иначе
+ * каждый POST в тесте начинался бы с его добычи.
+ *
+ * @param array<string, mixed> $body
+ * @param array<string, mixed> $query
+ * @param array<string, mixed> $headers
+ */
+function httpCall(
+    string $method,
+    string $path,
+    array $body = [],
+    array $query = [],
+    array $headers = []
+): Rsgrinko\Proton\Http\Response {
+    $user = $GLOBALS['test_actor'] ?? null;
+
+    Rsgrinko\Proton\Auth\Auth::forget();
+    Rsgrinko\Proton\Auth\Auth::actAs($user instanceof Rsgrinko\Proton\Models\User ? $user : null);
+
+    $writing = in_array(strtoupper($method), ['POST', 'PUT', 'PATCH', 'DELETE'], true);
+
+    if ($writing && !isset($body[Rsgrinko\Proton\Auth\Csrf::FIELD])) {
+        $body[Rsgrinko\Proton\Auth\Csrf::FIELD] = Rsgrinko\Proton\Auth\Csrf::token();
+    }
+
+    $request = Rsgrinko\Proton\Http\Request::create($method, $path, $body, $query, $headers);
+
+    return (new Rsgrinko\Proton\Http\Kernel())->handle($request);
+}
+
+/**
+ * @param array<string, mixed> $query
+ * @param array<string, mixed> $headers
+ */
+function get(string $path, array $query = [], array $headers = []): Rsgrinko\Proton\Http\Response
+{
+    return httpCall('GET', $path, [], $query, $headers);
+}
+
+/**
+ * @param array<string, mixed> $body
+ * @param array<string, mixed> $headers
+ */
+function post(string $path, array $body = [], array $headers = []): Rsgrinko\Proton\Http\Response
+{
+    return httpCall('POST', $path, $body, [], $headers);
+}
+
+/**
+ * Текст есть на странице. Теги не считаются: тест не должен падать от того,
+ * что слово обернули в <b>.
+ */
+function assertSee(string $needle, Rsgrinko\Proton\Http\Response $response, string $message = ''): void
+{
+    $text = preg_replace('/\s+/u', ' ', trim(strip_tags($response->body()))) ?? '';
+
+    if (!str_contains($text, $needle) && !str_contains($response->body(), $needle)) {
+        throw new TestFailure(
+            ($message !== '' ? $message . ': ' : '') . 'на странице нет «' . $needle . '»'
+        );
+    }
+}
+
+/**
+ * Текста на странице быть не должно.
+ */
+function assertDontSee(string $needle, Rsgrinko\Proton\Http\Response $response, string $message = ''): void
+{
+    $text = preg_replace('/\s+/u', ' ', trim(strip_tags($response->body()))) ?? '';
+
+    if (str_contains($text, $needle) || str_contains($response->body(), $needle)) {
+        throw new TestFailure(
+            ($message !== '' ? $message . ': ' : '') . 'на странице не должно быть «' . $needle . '»'
+        );
+    }
+}
+
+/**
+ * Ответ уводит на другой адрес. Достаточно куска пути: домен в тестах разный.
+ */
+function assertRedirect(string $to, Rsgrinko\Proton\Http\Response $response, string $message = ''): void
+{
+    if ($response->status() < 300 || $response->status() >= 400) {
+        throw new TestFailure(
+            ($message !== '' ? $message . ': ' : '') . 'ожидался редирект, получен код ' . $response->status()
+        );
+    }
+
+    $location = $response->header('Location');
+
+    if (!str_contains($location, $to)) {
+        throw new TestFailure(
+            ($message !== '' ? $message . ': ' : '') . 'ожидался переход на ' . $to . ', получен ' . $location
+        );
+    }
+}
+
+/**
  * Код ответа. При расхождении показывает начало тела — сразу видно, что
  * вернулось на самом деле: страница ошибки, редирект или JSON с описанием.
  */
