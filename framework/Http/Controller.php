@@ -6,7 +6,12 @@ namespace Rsgrinko\Proton\Http;
 
 use Rsgrinko\Proton\Database\Model\Model;
 use Rsgrinko\Proton\Database\Model\RecordNotFound;
+use Rsgrinko\Proton\Database\Query\Builder;
+use Rsgrinko\Proton\Support\Audit;
 use Rsgrinko\Proton\Support\Config;
+use Rsgrinko\Proton\Support\Export;
+use Rsgrinko\Proton\Support\Filter;
+use Rsgrinko\Proton\Support\Filters;
 use Rsgrinko\Proton\Support\Validator;
 use Rsgrinko\Proton\View\View;
 
@@ -104,6 +109,39 @@ abstract class Controller
         }
 
         return $record;
+    }
+
+    /**
+     * Фильтры списка из параметров адреса.
+     *
+     * @param array<int, Filter> $fields
+     */
+    protected function filters(Request $request, array $fields): Filters
+    {
+        return Filters::make($request, $fields);
+    }
+
+    /**
+     * Выгрузка списка файлом: тот же запрос, что на экране, — с фильтрами
+     * и сортировкой. Слишком большую выборку не отдаём: файл собирается
+     * в памяти, а человек ждёт ответа.
+     *
+     * @param array<string, string|array{0: string, 1: callable}> $columns
+     */
+    protected function exportCsv(Builder $query, array $columns, string $name, string $entity = '', string $route = ''): Response
+    {
+        if (!Export::fits($query)) {
+            $this->flash('Слишком много строк для выгрузки — сузьте отбор (предел ' . Export::limit() . ')', 'error');
+
+            return $this->redirect($route !== '' ? $route : 'home');
+        }
+
+        // Выгрузка уносит данные наружу файлом — это действие, а не просмотр
+        if ($entity !== '') {
+            Audit::action($entity, 0, 'выгружен список: ' . $name);
+        }
+
+        return Export::csv($query, $columns, $name);
     }
 
     /**

@@ -10,6 +10,7 @@ use Rsgrinko\Proton\Http\Response;
 use Rsgrinko\Proton\Models\ApiToken;
 use Rsgrinko\Proton\Models\User;
 use Rsgrinko\Proton\Support\Audit;
+use Rsgrinko\Proton\Support\Filter;
 use Rsgrinko\Proton\Support\IpAllowlist;
 use Rsgrinko\Proton\View\View;
 
@@ -29,13 +30,20 @@ final class TokensController extends Controller
             $owners[$user->id()] = (string) $user->login;
         }
 
+        $filters = $this->filters($request, [
+            Filter::search('q', 'Поиск', ['name'], 'название ключа'),
+            Filter::select('user_id', 'Владелец', $owners),
+            Filter::flag('active', 'Действует'),
+        ])->sortable(['id', 'name', 'last_used_at'], 'id');
+
         return $this->view('admin/tokens', [
-            'active' => 'tokens',
-            'page'   => ApiToken::query()->orderBy('id', 'desc')->paginate($this->page($request), $this->perPage()),
-            'owners' => $owners,
-            'users'  => User::query()->where('active', 1)->orderBy('login')->get(),
+            'active'  => 'tokens',
+            'page'    => $filters->apply(ApiToken::query())->paginate($this->page($request), $this->perPage()),
+            'owners'  => $owners,
+            'users'   => User::query()->where('active', 1)->orderBy('login')->get(),
+            'filters' => $filters,
             // Свежий ключ, если только что выпустили
-            'issued' => (string) View::takeStash('api_key', ''),
+            'issued'  => (string) View::takeStash('api_key', ''),
         ], 'Ключи API');
     }
 

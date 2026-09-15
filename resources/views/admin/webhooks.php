@@ -8,6 +8,7 @@ declare(strict_types=1);
  * @var array{items: array<int, \Rsgrinko\Proton\Models\Webhook>, total: int, page: int, pages: int, per_page: int} $page
  * @var array<string, array<string, string>> $groups события по разделам
  * @var array<string, int> $stats посылки по состояниям
+ * @var \Rsgrinko\Proton\Support\Filters $filters
  */
 
 use Rsgrinko\Proton\Models\Webhook;
@@ -41,6 +42,8 @@ foreach ($groups as $group) {
     </div>
 </div>
 
+<?= View::partial('filters', ['filters' => $filters, 'route' => 'admin.webhooks', 'total' => $page['total']]) ?>
+
 <div class="card">
     <h2>Список</h2>
 
@@ -50,7 +53,7 @@ foreach ($groups as $group) {
         <div class="table-wrap">
             <table class="list">
                 <tr class="head">
-                    <th>Название</th>
+                    <th><?= View::partial('sort', ['filters' => $filters, 'route' => 'admin.webhooks', 'column' => 'name', 'label' => 'Название']) ?></th>
                     <th>Адрес</th>
                     <th class="hide-sm">События</th>
                     <th>Состояние</th>
@@ -103,7 +106,7 @@ foreach ($groups as $group) {
             'route'  => 'admin.webhooks',
             'page'   => $page['page'],
             'pages'  => $page['pages'],
-            'params' => [],
+            'params' => $filters->params(),
         ]) ?>
     <?php } ?>
 </div>

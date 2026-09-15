@@ -6,8 +6,7 @@ declare(strict_types=1);
  * Журнал действий.
  *
  * @var array{items: array<int, \Rsgrinko\Proton\Models\AuditEntry>, total: int, page: int, pages: int, per_page: int} $page
- * @var array<string, string> $filters
- * @var array<string, string> $actions
+ * @var \Rsgrinko\Proton\Support\Filters $filters
  */
 
 use Rsgrinko\Proton\Models\AuditEntry;
@@ -15,38 +14,7 @@ use Rsgrinko\Proton\View\View;
 ?>
 <h1>Журнал действий</h1>
 
-<div class="card">
-    <form method="get" action="<?= View::e(View::route('admin.audit')) ?>">
-        <div class="filters">
-            <label>
-                <span>Действие</span>
-                <select name="action">
-                    <option value="">любое</option>
-                    <?php foreach ($actions as $code => $label) { ?>
-                        <option value="<?= View::e($code) ?>" <?= $filters['action'] === $code ? 'selected' : '' ?>><?= View::e($label) ?></option>
-                    <?php } ?>
-                </select>
-            </label>
-
-            <label>
-                <span>Раздел</span>
-                <input type="text" name="entity" value="<?= View::e($filters['entity']) ?>" placeholder="user, role, note">
-            </label>
-
-            <label>
-                <span>Поиск по описанию</span>
-                <input type="search" name="q" value="<?= View::e($filters['q']) ?>">
-            </label>
-        </div>
-
-        <div class="filter-actions row">
-            <button type="submit" class="primary">Показать</button>
-            <a class="btn" href="<?= View::e(View::route('admin.audit')) ?>">Сбросить</a>
-            <span class="spacer"></span>
-            <span class="muted small">Записей: <?= (int) $page['total'] ?></span>
-        </div>
-    </form>
-</div>
+<?= View::partial('filters', ['filters' => $filters, 'route' => 'admin.audit', 'total' => $page['total'], 'export' => 'admin.audit.export']) ?>
 
 <div class="card">
     <?php if ($page['items'] === []) { ?>
@@ -55,7 +23,7 @@ use Rsgrinko\Proton\View\View;
         <div class="table-wrap">
             <table class="list">
                 <tr class="head">
-                    <th>Когда</th>
+                    <th><?= View::partial('sort', ['filters' => $filters, 'route' => 'admin.audit', 'column' => 'created_at', 'label' => 'Когда']) ?></th>
                     <th>Кто</th>
                     <th>Действие</th>
                     <th>Описание</th>
@@ -96,7 +64,7 @@ use Rsgrinko\Proton\View\View;
             'route'  => 'admin.audit',
             'page'   => $page['page'],
             'pages'  => $page['pages'],
-            'params' => $filters,
+            'params' => $filters->params(),
         ]) ?>
     <?php } ?>
 </div>

@@ -186,6 +186,38 @@ return [
         'per_page' => Env::int('UI_PER_PAGE', 25),
     ],
 
+    'export' => [
+        // Разделитель CSV: Excel с русской локалью ждёт точку с запятой
+        'delimiter' => Env::string('EXPORT_DELIMITER', ';'),
+        // Предел строк на выгрузку: файл собирается в памяти, а человек ждёт ответа
+        'max_rows' => Env::int('EXPORT_MAX_ROWS', 20000),
+    ],
+
+    'metrics' => [
+        // Счётчики запросов в кэше: выключаются, если сбор не нужен
+        'enabled' => Env::bool('METRICS_ENABLED', true),
+        // С какого времени ответа запрос считается медленным, мс
+        'slow_ms' => Env::int('METRICS_SLOW_MS', 1000),
+    ],
+
+    'monitor' => [
+        // Присмотр за порогами: проверяет расписание, о беде уведомляет тех,
+        // у кого право system.manage
+        'enabled'         => Env::bool('MONITOR_ENABLED', true),
+        'interval'        => Env::int('MONITOR_INTERVAL', 300),
+        // Про одну и ту же беду не чаще раза в столько минут
+        'repeat_minutes'  => Env::int('MONITOR_REPEAT_MINUTES', 60),
+        'failed_jobs'     => Env::int('MONITOR_FAILED_JOBS', 10),
+        'queue_backlog'   => Env::int('MONITOR_QUEUE_BACKLOG', 500),
+        'errors'          => Env::int('MONITOR_ERRORS', 20),
+        'free_bytes'      => Env::int('MONITOR_FREE_BYTES', 500 * 1024 * 1024),
+    ],
+
+    'import' => [
+        // Строк в одном файле: больше — разбивать файл или писать свою задачу
+        'max_rows' => Env::int('IMPORT_MAX_ROWS', 5000),
+    ],
+
     // Настройки самого приложения, а не ядра. Эту правят из панели —
     // см. config/settings.php
     'notes' => [

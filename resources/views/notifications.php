@@ -7,7 +7,7 @@ declare(strict_types=1);
  *
  * @var array{items: array<int, \Rsgrinko\Proton\Models\UserNotification>, total: int, page: int, pages: int, per_page: int} $page
  * @var int $unread сколько непрочитанных
- * @var bool $filter показываем только непрочитанные
+ * @var \Rsgrinko\Proton\Support\Filters $filters
  */
 
 use Rsgrinko\Proton\View\View;
@@ -16,11 +16,7 @@ use Rsgrinko\Proton\View\View;
 
 <div class="card">
     <div class="row">
-        <?php if ($filter) { ?>
-            <a class="btn" href="<?= View::e(View::route('notifications')) ?>">Показать все</a>
-        <?php } else { ?>
-            <a class="btn" href="<?= View::e(View::route('notifications', ['unread' => 1])) ?>">Только непрочитанные</a>
-        <?php } ?>
+        <a class="btn" href="<?= View::e(View::route('notifications', ['read' => '0'])) ?>">Только непрочитанные</a>
 
         <?php if ($unread > 0) { ?>
             <form method="post" action="<?= View::e(View::route('notifications.read_all')) ?>">
@@ -31,9 +27,11 @@ use Rsgrinko\Proton\View\View;
     </div>
 </div>
 
+<?= View::partial('filters', ['filters' => $filters, 'route' => 'notifications', 'total' => $page['total']]) ?>
+
 <div class="card">
     <?php if ($page['items'] === []) { ?>
-        <p class="muted"><?= $filter ? 'Непрочитанных нет.' : 'Уведомлений пока нет.' ?></p>
+        <p class="muted"><?= $filters->active() ? 'Ничего не нашлось.' : 'Уведомлений пока нет.' ?></p>
     <?php } else { ?>
         <div class="table-wrap">
             <table class="list">
@@ -86,7 +84,7 @@ use Rsgrinko\Proton\View\View;
             'route'  => 'notifications',
             'page'   => $page['page'],
             'pages'  => $page['pages'],
-            'params' => $filter ? ['unread' => 1] : [],
+            'params' => $filters->params(),
         ]) ?>
     <?php } ?>
 </div>

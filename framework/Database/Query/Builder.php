@@ -212,11 +212,14 @@ class Builder
      */
     public function whereLike(string $column, string $value, string $boolean = 'AND'): static
     {
-        $escaped = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $value);
+        // Экранируем восклицательным знаком, а не обратным слэшем: ESCAPE '!'
+        // пишется одинаково в SQLite и MySQL, а «\» в MySQL пришлось бы удваивать
+        // ещё раз. Без ESCAPE поиск по «имя_файла» не нашёл бы ничего.
+        $escaped = str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $value);
 
         $this->wheres[] = [
             'type'    => 'basic',
-            'sql'     => $this->name($column) . ' LIKE ' . $this->bind('%' . $escaped . '%'),
+            'sql'     => $this->name($column) . ' LIKE ' . $this->bind('%' . $escaped . '%') . " ESCAPE '!'",
             'boolean' => $boolean,
         ];
 

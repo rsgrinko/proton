@@ -14,6 +14,7 @@ use App\Controllers\Admin\AuditController;
 use App\Controllers\Admin\BackupsController;
 use App\Controllers\Admin\DashboardController;
 use App\Controllers\Admin\LogsController;
+use App\Controllers\Admin\ReportsController;
 use App\Controllers\Admin\RolesController;
 use App\Controllers\Admin\SettingsController;
 use App\Controllers\Admin\SystemController;
@@ -31,6 +32,7 @@ return static function (Router $router): void {
 
         $router->group(['prefix' => '/users', 'middleware' => 'can:' . Permission::USERS_MANAGE], function (Router $router): void {
             $router->get('', [UsersController::class, 'index'])->name('admin.users');
+            $router->get('/export', [UsersController::class, 'export'])->name('admin.users.export');
             $router->get('/new', [UsersController::class, 'create'])->name('admin.users.create');
             $router->post('/new', [UsersController::class, 'store']);
             $router->get('/{id:\d+}', [UsersController::class, 'show'])->name('admin.users.show');
@@ -82,9 +84,18 @@ return static function (Router $router): void {
             $router->post('/reset', [SettingsController::class, 'reset'])->name('admin.settings.reset');
         });
 
+        $router->group(['prefix' => '/reports', 'middleware' => 'can:' . Permission::SYSTEM_VIEW], function (Router $router): void {
+            $router->get('', [ReportsController::class, 'index'])->name('admin.reports');
+            $router->get('/export', [ReportsController::class, 'export'])->name('admin.reports.export');
+        });
+
         $router->get('/audit', [AuditController::class, 'index'])
             ->middleware('can:' . Permission::AUDIT_VIEW)
             ->name('admin.audit');
+
+        $router->get('/audit/export', [AuditController::class, 'export'])
+            ->middleware('can:' . Permission::AUDIT_VIEW)
+            ->name('admin.audit.export');
 
         $router->get('/logs', [LogsController::class, 'index'])
             ->middleware('can:' . Permission::LOGS_VIEW)

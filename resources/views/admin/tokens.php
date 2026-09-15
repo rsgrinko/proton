@@ -8,6 +8,7 @@ declare(strict_types=1);
  * @var array{items: array<int, \Rsgrinko\Proton\Models\ApiToken>, total: int, page: int, pages: int, per_page: int} $page
  * @var array<int, string> $owners
  * @var array<int, \Rsgrinko\Proton\Models\User> $users
+ * @var \Rsgrinko\Proton\Support\Filters $filters
  * @var string $issued только что выпущенный ключ — показывается один раз
  */
 
@@ -57,6 +58,8 @@ use Rsgrinko\Proton\View\View;
     </form>
 </div>
 
+<?= View::partial('filters', ['filters' => $filters, 'route' => 'admin.tokens', 'total' => $page['total']]) ?>
+
 <div class="card">
     <h2>Выпущенные</h2>
 
@@ -66,7 +69,7 @@ use Rsgrinko\Proton\View\View;
         <div class="table-wrap">
             <table class="list">
                 <tr class="head">
-                    <th>Название</th>
+                    <th><?= View::partial('sort', ['filters' => $filters, 'route' => 'admin.tokens', 'column' => 'name', 'label' => 'Название']) ?></th>
                     <th>Ключ</th>
                     <th class="hide-sm">Владелец</th>
                     <th class="hide-sm">Адреса</th>
@@ -113,7 +116,7 @@ use Rsgrinko\Proton\View\View;
             'route'  => 'admin.tokens',
             'page'   => $page['page'],
             'pages'  => $page['pages'],
-            'params' => [],
+            'params' => $filters->params(),
         ]) ?>
     <?php } ?>
 </div>

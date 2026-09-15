@@ -51,6 +51,7 @@ final class Settings
         'Приложение' => [
             'app.name'     => ['label' => 'Название', 'type' => self::STRING],
             'ui.per_page'  => ['label' => 'Записей на странице', 'type' => self::INT, 'hint' => 'от 5 до 200'],
+            'export.max_rows' => ['label' => 'Строк на выгрузку', 'type' => self::INT, 'hint' => 'больше — только задачей'],
             'log.level'    => [
                 'label'   => 'Подробность логов',
                 'type'    => self::SELECT,

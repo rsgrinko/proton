@@ -6,10 +6,14 @@ declare(strict_types=1);
  * Список заметок.
  *
  * @var array{items: array<int, \App\Models\Note>, total: int, page: int, pages: int, per_page: int} $page
- * @var string $search
+ * @var \Rsgrinko\Proton\Support\Filters $filters
  */
 
+use Rsgrinko\Proton\Support\ImportReport;
 use Rsgrinko\Proton\View\View;
+
+/** @var ImportReport|null $report отчёт после загрузки файла */
+$report = View::takeStash('import');
 ?>
 <div class="row">
     <h1 style="margin: 0;">Заметки</h1>
@@ -20,25 +24,46 @@ use Rsgrinko\Proton\View\View;
     <?php } ?>
 </div>
 
-<div class="card" style="margin-top: 16px;">
-    <form method="get" action="<?= View::e(View::route('notes.index')) ?>">
-        <div class="filters">
-            <label>
-                <span>Поиск по названию</span>
-                <input type="search" name="q" value="<?= View::e($search) ?>">
-            </label>
-        </div>
-
-        <div class="filter-actions row">
-            <button type="submit" class="primary">Искать</button>
-            <?php if ($search !== '') { ?>
-                <a class="btn" href="<?= View::e(View::route('notes.index')) ?>">Сбросить</a>
-            <?php } ?>
-            <span class="spacer"></span>
-            <span class="muted small">Всего: <?= (int) $page['total'] ?></span>
-        </div>
-    </form>
+<div style="margin-top: 16px;">
+    <?= View::partial('filters', ['filters' => $filters, 'route' => 'notes.index', 'total' => $page['total'], 'submit' => 'Искать', 'export' => 'notes.export']) ?>
 </div>
+
+<?php if ($report instanceof ImportReport && $report->errors !== []) { ?>
+    <div class="card">
+        <h2>Что не загрузилось</h2>
+
+        <ul class="muted small">
+            <?php foreach ($report->firstErrors() as $error) { ?>
+                <li><?= View::e($error) ?></li>
+            <?php } ?>
+        </ul>
+
+        <?php if ($report->restErrors() > 0) { ?>
+            <p class="muted small">…и ещё строк с ошибками: <?= $report->restErrors() ?></p>
+        <?php } ?>
+    </div>
+<?php } ?>
+
+<?php if (View::can('notes.manage')) { ?>
+    <div class="card">
+        <h2>Загрузка из CSV</h2>
+
+        <p class="muted small">
+            Колонки: <span class="mono">Название</span>, <span class="mono">Текст</span>,
+            <span class="mono">Закреплена</span> — такие же, как в выгрузке. Плохая строка
+            попадёт в отчёт, остальные загрузятся.
+        </p>
+
+        <form method="post" action="<?= View::e(View::route('notes.import')) ?>" enctype="multipart/form-data">
+            <?= View::csrf() ?>
+
+            <div class="row">
+                <input type="file" name="file" accept=".csv,text/csv" required>
+                <button type="submit" class="primary">Загрузить</button>
+            </div>
+        </form>
+    </div>
+<?php } ?>
 
 <div class="card">
     <?php if ($page['items'] === []) { ?>
@@ -47,9 +72,9 @@ use Rsgrinko\Proton\View\View;
         <div class="table-wrap">
             <table class="list">
                 <tr class="head">
-                    <th>Название</th>
+                    <th><?= View::partial('sort', ['filters' => $filters, 'route' => 'notes.index', 'column' => 'title', 'label' => 'Название']) ?></th>
                     <th class="hide-sm">Текст</th>
-                    <th class="hide-sm">Изменена</th>
+                    <th class="hide-sm"><?= View::partial('sort', ['filters' => $filters, 'route' => 'notes.index', 'column' => 'created_at', 'label' => 'Создана']) ?></th>
                     <th></th>
                 </tr>
 
@@ -61,7 +86,7 @@ use Rsgrinko\Proton\View\View;
                             <?php if ($note->hasFile()) { ?><span class="badge muted">файл</span><?php } ?>
                         </td>
                         <td class="hide-sm muted small"><?= View::e($note->excerpt(80)) ?></td>
-                        <td class="hide-sm muted small"><?= View::e(View::ago((string) $note->raw('updated_at'))) ?></td>
+                        <td class="hide-sm muted small"><?= View::e(View::ago((string) $note->raw('created_at'))) ?></td>
                         <td class="right">
                             <?php if (View::can('notes.manage')) { ?>
                                 <a class="btn small" href="<?= View::e(View::route('notes.edit', ['id' => $note->id()])) ?>">Править</a>
@@ -76,7 +101,7 @@ use Rsgrinko\Proton\View\View;
             'route'  => 'notes.index',
             'page'   => $page['page'],
             'pages'  => $page['pages'],
-            'params' => ['q' => $search],
+            'params' => $filters->params(),
         ]) ?>
     <?php } ?>
 </div>

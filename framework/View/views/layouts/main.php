@@ -210,7 +210,19 @@ $unread = $viewer->isGuest() ? 0 : UserNotification::unreadFor($viewer->id());
 
         .filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; align-items: end; }
         .filters label { margin: 0; }
+        .filters .range { display: flex; gap: 6px; }
+        .filters .range input { min-width: 0; }
         .filter-actions { margin-top: 12px; }
+
+        .chart { display: flex; align-items: flex-end; gap: 2px; height: 120px; margin: 12px 0 6px; }
+        .chart .col { flex: 1 1 0; min-width: 2px; min-height: 2px; border-radius: 3px 3px 0 0; background: var(--accent); opacity: .85; }
+        .chart .col:hover { opacity: 1; }
+        .chart .col.empty { background: var(--border); }
+        .chart-legend { display: flex; justify-content: space-between; }
+
+        a.sort { color: inherit; text-decoration: none; white-space: nowrap; }
+        a.sort:hover { text-decoration: underline; }
+        a.sort .arrow { margin-left: 4px; color: var(--accent); }
 
         .flash { padding: 10px 14px; border-radius: 8px; margin-bottom: 14px; word-break: break-word; }
         .flash.ok { background: var(--ok-bg); color: var(--ok); }

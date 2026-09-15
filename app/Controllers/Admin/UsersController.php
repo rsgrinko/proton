@@ -13,6 +13,8 @@ use Rsgrinko\Proton\Models\Role;
 use Rsgrinko\Proton\Models\User;
 use Rsgrinko\Proton\Support\Audit;
 use Rsgrinko\Proton\Support\Config;
+use Rsgrinko\Proton\Support\Filter;
+use Rsgrinko\Proton\Support\Filters;
 use Rsgrinko\Proton\View\View;
 
 /**
@@ -22,22 +24,50 @@ final class UsersController extends Controller
 {
     public function index(Request $request): Response
     {
-        $search = $request->text('q');
-
-        $query = User::query()
-            ->when($search, static function ($query, string $needle): void {
-                $query->where(static function ($nested) use ($needle): void {
-                    $nested->whereLike('login', $needle)->orWhere('email', 'LIKE', '%' . $needle . '%');
-                });
-            })
-            ->orderBy('id');
+        $roles   = $this->roles();
+        $filters = $this->listFilters($request, $roles);
 
         return $this->view('admin/users', [
-            'active' => 'users',
-            'page'   => $query->paginate($this->page($request), $this->perPage()),
-            'roles'  => $this->roles(),
-            'search' => $search,
+            'active'  => 'users',
+            'page'    => $filters->apply(User::query())->paginate($this->page($request), $this->perPage()),
+            'roles'   => $roles,
+            'filters' => $filters,
         ], 'Пользователи');
+    }
+
+    /**
+     * Выгрузка списка: тот же отбор, что на экране.
+     */
+    public function export(Request $request): Response
+    {
+        $roles   = $this->roles();
+        $filters = $this->listFilters($request, $roles);
+
+        return $this->exportCsv($filters->apply(User::query()), [
+            'id'            => 'ID',
+            'login'         => 'Логин',
+            'name'          => 'Имя',
+            'email'         => 'Почта',
+            'role'          => ['Роль', static fn (User $user): string => $roles[(int) $user->raw('role_id')] ?? ''],
+            'active'        => ['Активен', static fn (User $user): string => $user->isActive() ? 'да' : 'нет'],
+            'created_at'    => 'Заведён',
+            'last_login_at' => 'Последний вход',
+        ], 'users', 'user', 'admin.users');
+    }
+
+    /**
+     * Фильтры списка — общие для страницы и выгрузки.
+     *
+     * @param array<int, string> $roles
+     */
+    private function listFilters(Request $request, array $roles): Filters
+    {
+        return $this->filters($request, [
+            Filter::search('q', 'Поиск', ['login', 'email', 'name'], 'логин, почта или имя'),
+            Filter::select('role_id', 'Роль', $roles),
+            Filter::flag('active', 'Активен'),
+            Filter::dates('created', 'Заведён', 'created_at'),
+        ])->sortable(['id', 'login', 'created_at', 'last_login_at'], 'id', 'asc');
     }
 
     public function create(): Response

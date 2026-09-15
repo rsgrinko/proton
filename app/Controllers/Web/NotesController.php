@@ -7,6 +7,7 @@ namespace App\Controllers\Web;
 use App\Models\Note;
 use Rsgrinko\Proton\Access\Scope;
 use Rsgrinko\Proton\Access\Viewer;
+use Rsgrinko\Proton\Database\Model\Query;
 use Rsgrinko\Proton\Events\Events;
 use Rsgrinko\Proton\Files\Storage;
 use Rsgrinko\Proton\Http\Controller;
@@ -14,7 +15,11 @@ use Rsgrinko\Proton\Http\Request;
 use Rsgrinko\Proton\Http\Response;
 use Rsgrinko\Proton\Support\Audit;
 use Rsgrinko\Proton\Support\Config;
+use Rsgrinko\Proton\Support\Filter;
+use Rsgrinko\Proton\Support\Filters;
+use Rsgrinko\Proton\Support\Import;
 use Rsgrinko\Proton\Support\ProtonException;
+use Rsgrinko\Proton\View\View;
 
 /**
  * Заметки — демонстрационный раздел: список с поиском и страницами, карточка,
@@ -29,22 +34,93 @@ final class NotesController extends Controller
 {
     public function index(Request $request, Scope $scope): Response
     {
-        $search = $request->text('q');
-
-        $query = $scope->apply(Note::query())
-            ->when($search, static function ($query, string $needle): void {
-                $query->whereLike('title', $needle);
-            })
-            ->orderBy('pinned', 'desc')
-            ->orderBy('id', 'desc');
-
-        $page = $query->paginate($this->page($request), $this->perPage());
+        $filters = $this->listFilters($request);
 
         return $this->view('notes/index', [
-            'active' => 'notes',
-            'page'   => $page,
-            'search' => $search,
+            'active'  => 'notes',
+            'page'    => $filters->apply($this->listQuery($scope))->paginate($this->page($request), $this->perPage()),
+            'filters' => $filters,
         ], 'Заметки');
+    }
+
+    /**
+     * Выгрузка: своя область видимости остаётся в силе — чужие заметки
+     * не уедут в файл.
+     */
+    public function export(Request $request, Scope $scope): Response
+    {
+        $filters = $this->listFilters($request);
+
+        return $this->exportCsv($filters->apply($this->listQuery($scope)), [
+            'id'         => 'ID',
+            'title'      => 'Название',
+            'body'       => 'Текст',
+            'pinned'     => ['Закреплена', static fn (Note $note): string => $note->pinned ? 'да' : 'нет'],
+            'created_at' => 'Создана',
+            'updated_at' => 'Изменена',
+        ], 'notes', 'note', 'notes.index');
+    }
+
+    private function listFilters(Request $request): Filters
+    {
+        return $this->filters($request, [
+            Filter::search('q', 'Поиск', ['title', 'body'], 'заголовок или текст'),
+            Filter::flag('pinned', 'Закреплена'),
+            Filter::dates('created', 'Создана', 'created_at'),
+        ])->sortable(['id', 'title', 'created_at'], 'id');
+    }
+
+    /**
+     * Закреплённые всегда сверху, поэтому их порядок ставится до фильтров.
+     */
+    private function listQuery(Scope $scope): Query
+    {
+        return $scope->apply(Note::query())->orderBy('pinned', 'desc');
+    }
+
+    /**
+     * Загрузка заметок из CSV. Файл разбирается построчно: плохая строка
+     * попадает в отчёт, остальные заводятся.
+     */
+    public function import(Request $request, Viewer $viewer): Response
+    {
+        $file = $request->file('file');
+
+        if ($file === null || !$file->uploaded()) {
+            $this->flash($file?->error() ?? 'Выберите файл CSV', 'error');
+
+            return $this->redirect('notes.index');
+        }
+
+        if ($file->extension() !== 'csv') {
+            $this->flash('Нужен файл CSV', 'error');
+
+            return $this->redirect('notes.index');
+        }
+
+        $report = Import::csv(
+            (string) file_get_contents($file->tmpPath()),
+            ['Название' => 'title', 'Текст' => 'body', 'Закреплена' => 'pinned'],
+            ['title' => 'required|max:191', 'body' => 'nullable|max:20000', 'pinned' => 'nullable|max:10'],
+            static function (array $row) use ($viewer): void {
+                $note = new Note([
+                    'title'  => (string) $row['title'],
+                    'body'   => (string) ($row['body'] ?? ''),
+                    'pinned' => in_array(mb_strtolower((string) ($row['pinned'] ?? '')), ['да', '1', 'true'], true) ? 1 : 0,
+                ]);
+
+                $note->setAttribute('user_id', $viewer->id());
+                $note->save();
+            }
+        );
+
+        Audit::action('note', 0, 'импорт заметок: ' . $report->summary());
+
+        View::stash('import', $report);
+
+        $this->flash($report->summary(), $report->failed > 0 ? 'error' : 'ok');
+
+        return $this->redirect('notes.index');
     }
 
     public function create(): Response

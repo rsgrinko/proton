@@ -77,6 +77,8 @@ return static function (Router $router): void {
             // контроллером, шаблонами и миграцией
             $router->group(['prefix' => '/notes'], function (Router $router): void {
                 $router->get('', [NotesController::class, 'index'])->middleware('can:notes.view')->name('notes.index');
+                $router->get('/export', [NotesController::class, 'export'])->middleware('can:notes.view')->name('notes.export');
+                $router->post('/import', [NotesController::class, 'import'])->middleware('can:notes.manage')->name('notes.import');
                 $router->get('/new', [NotesController::class, 'create'])->middleware('can:notes.manage')->name('notes.create');
                 $router->post('/new', [NotesController::class, 'store'])->middleware('can:notes.manage');
 

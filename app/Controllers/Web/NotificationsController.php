@@ -9,6 +9,7 @@ use Rsgrinko\Proton\Http\Controller;
 use Rsgrinko\Proton\Http\Request;
 use Rsgrinko\Proton\Http\Response;
 use Rsgrinko\Proton\Models\UserNotification;
+use Rsgrinko\Proton\Support\Filter;
 
 /**
  * Лента уведомлений: своя у каждого.
@@ -20,20 +21,19 @@ final class NotificationsController extends Controller
 {
     public function index(Request $request, Viewer $viewer): Response
     {
-        $onlyUnread = $request->query('unread', '') !== '';
+        $filters = $this->filters($request, [
+            Filter::search('q', 'Поиск', ['title', 'body'], 'заголовок или текст'),
+            Filter::filled('read', 'Прочитано', 'да', 'нет', 'read_at'),
+            Filter::dates('when', 'Когда', 'created_at'),
+        ])->sortable(['id'], 'id');
 
-        $query = UserNotification::query()
-            ->where('user_id', $viewer->id())
-            ->when($onlyUnread, static function ($query): void {
-                $query->whereNull('read_at');
-            })
-            ->orderBy('id', 'desc');
+        $query = UserNotification::query()->where('user_id', $viewer->id());
 
         return $this->view('notifications', [
-            'active' => 'notifications',
-            'page'   => $query->paginate($this->page($request), $this->perPage()),
-            'unread' => UserNotification::unreadFor($viewer->id()),
-            'filter' => $onlyUnread,
+            'active'  => 'notifications',
+            'page'    => $filters->apply($query)->paginate($this->page($request), $this->perPage()),
+            'unread'  => UserNotification::unreadFor($viewer->id()),
+            'filters' => $filters,
         ], 'Уведомления');
     }
 

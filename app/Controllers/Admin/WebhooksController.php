@@ -10,6 +10,7 @@ use Rsgrinko\Proton\Http\Response;
 use Rsgrinko\Proton\Models\Webhook;
 use Rsgrinko\Proton\Models\WebhookDelivery;
 use Rsgrinko\Proton\Support\Audit;
+use Rsgrinko\Proton\Support\Filter;
 use Rsgrinko\Proton\View\View;
 use Rsgrinko\Proton\Webhooks\Webhooks;
 
@@ -24,11 +25,17 @@ final class WebhooksController extends Controller
 {
     public function index(Request $request): Response
     {
+        $filters = $this->filters($request, [
+            Filter::search('q', 'Поиск', ['name', 'url'], 'название или адрес'),
+            Filter::flag('active', 'Включён'),
+        ])->sortable(['id', 'name'], 'id');
+
         return $this->view('admin/webhooks', [
-            'active' => 'webhooks',
-            'page'   => Webhook::query()->orderBy('id', 'desc')->paginate($this->page($request), $this->perPage()),
-            'groups' => Webhooks::groups(),
-            'stats'  => WebhookDelivery::stats(),
+            'active'  => 'webhooks',
+            'page'    => $filters->apply(Webhook::query())->paginate($this->page($request), $this->perPage()),
+            'groups'  => Webhooks::groups(),
+            'stats'   => WebhookDelivery::stats(),
+            'filters' => $filters,
         ], 'Вебхуки');
     }
 
