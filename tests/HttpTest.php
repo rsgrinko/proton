@@ -358,6 +358,24 @@ test('http: подписка на события заводится и пров�
     assertSame(0, WebhookDelivery::query()->where('webhook_id', $webhook->id())->count(), 'журнал ушёл вместе с подпиской');
 });
 
+test('http: пользователь удаляется из панели, а себя удалить нельзя', function (): void {
+    $victim = User::register('http_victim_' . bin2hex(random_bytes(3)), 'секрет123', [
+        'email'   => 'victim' . bin2hex(random_bytes(3)) . '@example.com',
+        'role_id' => httpUser()->raw('role_id'),
+    ]);
+
+    afterTests(static function () use ($victim): void {
+        $victim->forceDelete();
+    });
+
+    assertStatus(302, httpRequest('POST', '/admin/users/' . $victim->id() . '/delete', httpAdmin()));
+    assertNull(User::find($victim->id()));
+
+    // Себя не удаляем: обработчик получает текущего пользователя из атрибутов запроса
+    assertStatus(302, httpRequest('POST', '/admin/users/' . httpAdmin()->id() . '/delete', httpAdmin()));
+    assertNotNull(User::find(httpAdmin()->id()));
+});
+
 test('http: неизвестный адрес — 404', function (): void {
     assertStatus(404, httpRequest('GET', '/нет-такой-страницы', httpAdmin()));
 });

@@ -170,27 +170,28 @@ final class UsersController extends Controller
         return $this->redirect('admin.users.show', ['id' => $user->id()]);
     }
 
-    public function delete(int $id, User $current): Response
+    // $user — тот, кто нажал кнопку: роутер подставляет атрибут по имени аргумента
+    public function delete(int $id, User $user): Response
     {
-        /** @var User $user */
-        $user = $this->require(User::find($id), 'admin.users', 'Пользователь не найден');
+        /** @var User $target */
+        $target = $this->require(User::find($id), 'admin.users', 'Пользователь не найден');
 
-        if ($user->id() === $current->id()) {
+        if ($target->id() === $user->id()) {
             $this->flash('Себя удалять нельзя', 'error');
 
-            return $this->redirect('admin.users.show', ['id' => $user->id()]);
+            return $this->redirect('admin.users.show', ['id' => $target->id()]);
         }
 
-        if (User::query()->where('active', 1)->count() <= 1 && $user->isActive()) {
+        if (User::query()->where('active', 1)->count() <= 1 && $target->isActive()) {
             $this->flash('Это последний активный пользователь — удалять его нельзя', 'error');
 
-            return $this->redirect('admin.users.show', ['id' => $user->id()]);
+            return $this->redirect('admin.users.show', ['id' => $target->id()]);
         }
 
-        $login = (string) $user->login;
+        $login = (string) $target->login;
 
-        $user->logoutEverywhere();
-        $user->delete();
+        $target->logoutEverywhere();
+        $target->delete();
 
         Audit::deleted('user', $id, 'удалён пользователь ' . $login);
 
