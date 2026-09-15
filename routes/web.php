@@ -15,6 +15,7 @@ declare(strict_types=1);
  */
 
 use App\Controllers\Web\AuthController;
+use App\Controllers\Web\ExportsController;
 use App\Controllers\Web\HomeController;
 use App\Controllers\Web\InstallController;
 use App\Controllers\Web\NotesController;
@@ -53,6 +54,11 @@ return static function (Router $router): void {
             ->middleware('signed')
             ->name('notes.file.shared');
 
+        // Готовая фоновая выгрузка: только по подписанной ссылке из уведомления
+        $router->get('/exports/{file}', [ExportsController::class, 'download'])
+            ->middleware('signed')
+            ->name('exports.download');
+
         // Подтверждение почты открыто и вошедшему: письмо могли открыть позже
         $router->get('/verify/{token}', [RegisterController::class, 'verify'])->name('verify');
 
@@ -85,6 +91,7 @@ return static function (Router $router): void {
                 $router->get('', [NotesController::class, 'index'])->middleware('can:notes.view')->name('notes.index');
                 $router->get('/export', [NotesController::class, 'export'])->middleware('can:notes.view')->name('notes.export');
                 $router->post('/import', [NotesController::class, 'import'])->middleware('can:notes.manage')->name('notes.import');
+                $router->post('/import/confirm', [NotesController::class, 'importConfirm'])->middleware('can:notes.manage')->name('notes.import.confirm');
                 $router->get('/new', [NotesController::class, 'create'])->middleware('can:notes.manage')->name('notes.create');
                 $router->post('/new', [NotesController::class, 'store'])->middleware('can:notes.manage');
 

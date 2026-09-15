@@ -20,12 +20,13 @@ final class ImportReport
         public readonly int $loaded,
         public readonly int $failed,
         public readonly array $errors = [],
+        public readonly int $updated = 0,
     ) {
     }
 
     public function ok(): bool
     {
-        return $this->failed === 0 && $this->loaded > 0;
+        return $this->failed === 0 && ($this->loaded > 0 || $this->updated > 0);
     }
 
     /**
@@ -51,12 +52,20 @@ final class ImportReport
      */
     public function summary(): string
     {
-        if ($this->loaded === 0 && $this->failed === 0) {
+        if ($this->loaded === 0 && $this->updated === 0 && $this->failed === 0) {
             return 'Из файла ничего не загружено';
         }
 
-        $text = 'Загружено строк: ' . $this->loaded;
+        $parts = ['загружено: ' . $this->loaded];
 
-        return $this->failed > 0 ? $text . ', с ошибками: ' . $this->failed : $text;
+        if ($this->updated > 0) {
+            $parts[] = 'обновлено: ' . $this->updated;
+        }
+
+        if ($this->failed > 0) {
+            $parts[] = 'с ошибками: ' . $this->failed;
+        }
+
+        return ucfirst(implode(', ', $parts));
     }
 }

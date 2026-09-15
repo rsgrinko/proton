@@ -34,6 +34,12 @@ use Rsgrinko\Proton\View\View;
  */
 final class NotesController extends Controller
 {
+    /** Колонки файла: те же, что в выгрузке */
+    private const COLUMNS = ['Название' => 'title', 'Текст' => 'body', 'Закреплена' => 'pinned'];
+
+    /** Проверка строки файла */
+    private const RULES = ['title' => 'required|max:191', 'body' => 'nullable|max:20000', 'pinned' => 'nullable|max:10'];
+
     public function index(Request $request, Scope $scope): Response
     {
         $filters = $this->listFilters($request);
@@ -60,7 +66,7 @@ final class NotesController extends Controller
             'pinned'     => ['Закреплена', static fn (Note $note): string => $note->pinned ? 'да' : 'нет'],
             'created_at' => 'Создана',
             'updated_at' => 'Изменена',
-        ], 'notes', 'note', 'notes.index');
+        ], 'notes', 'note', 'notes.index', $request);
     }
 
     private function listFilters(Request $request): Filters
@@ -86,32 +92,62 @@ final class NotesController extends Controller
      */
     public function import(Request $request, Viewer $viewer): Response
     {
-        $file = $request->file('file');
+        $content = $this->uploaded($request);
 
-        if ($file === null || !$file->uploaded()) {
-            $this->flash($file?->error() ?? 'Выберите файл CSV', 'error');
-
+        if ($content === null) {
             return $this->redirect('notes.index');
         }
 
-        if ($file->extension() !== 'csv') {
-            $this->flash('Нужен файл CSV', 'error');
+        // Первый шаг — предпросмотр: человек видит, что заведётся, что обновится
+        // и что отвалится, и только потом решает
+        $plan = Import::plan(
+            $content,
+            self::COLUMNS,
+            self::RULES,
+            [],
+            fn (array $row): ?Note => $this->locate($row, $viewer)
+        );
+
+        View::stash('import_plan', $plan);
+        View::stash('import_file', $this->keepFile($content));
+
+        $this->flash(
+            $plan->any() ? 'Проверьте, что получится, и подтвердите загрузку' : 'Загружать нечего',
+            $plan->any() ? 'ok' : 'error'
+        );
+
+        return $this->redirect('notes.index');
+    }
+
+    /**
+     * Второй шаг: подтверждённая загрузка. Файл берётся тот же, что смотрели
+     * в предпросмотре, — заново его не присылают.
+     */
+    public function importConfirm(Request $request, Viewer $viewer): Response
+    {
+        $content = $this->takeFile((string) $request->input('file', ''));
+
+        if ($content === null) {
+            $this->flash('Файл потерялся — загрузите его заново', 'error');
 
             return $this->redirect('notes.index');
         }
 
         $report = Import::csv(
-            (string) file_get_contents($file->tmpPath()),
-            ['Название' => 'title', 'Текст' => 'body', 'Закреплена' => 'pinned'],
-            ['title' => 'required|max:191', 'body' => 'nullable|max:20000', 'pinned' => 'nullable|max:10'],
-            static function (array $row) use ($viewer): void {
-                $note = new Note([
-                    'title'  => (string) $row['title'],
-                    'body'   => (string) ($row['body'] ?? ''),
-                    'pinned' => in_array(mb_strtolower((string) ($row['pinned'] ?? '')), ['да', '1', 'true'], true) ? 1 : 0,
-                ]);
+            $content,
+            self::COLUMNS,
+            self::RULES,
+            function (array $row) use ($viewer): void {
+                $note = new Note($this->fields($row));
 
                 $note->setAttribute('user_id', $viewer->id());
+                $note->save();
+            },
+            [],
+            fn (array $row): ?Note => $this->locate($row, $viewer),
+            function (Note $note, array $row): void {
+                // Повторная загрузка того же файла правит запись, а не двоит её
+                $note->fill($this->fields($row));
                 $note->save();
             }
         );
@@ -123,6 +159,104 @@ final class NotesController extends Controller
         $this->flash($report->summary(), $report->failed > 0 ? 'error' : 'ok');
 
         return $this->redirect('notes.index');
+    }
+
+    /**
+     * Содержимое присланного файла или null, если прислали не то.
+     */
+    private function uploaded(Request $request): ?string
+    {
+        $file = $request->file('file');
+
+        if ($file === null || !$file->uploaded()) {
+            $this->flash($file?->error() ?? 'Выберите файл CSV', 'error');
+
+            return null;
+        }
+
+        if ($file->extension() !== 'csv') {
+            $this->flash('Нужен файл CSV', 'error');
+
+            return null;
+        }
+
+        return (string) file_get_contents($file->tmpPath());
+    }
+
+    /**
+     * Кладёт файл между шагами во временный каталог и возвращает метку.
+     * В сессии его держать нельзя: файл бывает на мегабайты.
+     */
+    private function keepFile(string $content): string
+    {
+        $token = bin2hex(random_bytes(8));
+
+        file_put_contents($this->tempPath($token), $content);
+
+        return $token;
+    }
+
+    /**
+     * Забирает отложенный файл и сразу убирает его: второй раз он не нужен.
+     */
+    private function takeFile(string $token): ?string
+    {
+        if (preg_match('/^[a-f0-9]{16}$/', $token) !== 1) {
+            return null;
+        }
+
+        $path = $this->tempPath($token);
+
+        if (!is_file($path)) {
+            return null;
+        }
+
+        $content = (string) file_get_contents($path);
+
+        @unlink($path);
+
+        return $content;
+    }
+
+    private function tempPath(string $token): string
+    {
+        $dir = (string) Config::get('paths.tmp', APP_ROOT . '/var/tmp') . '/import';
+
+        @mkdir($dir, 0775, true);
+
+        return $dir . '/' . $token . '.csv';
+    }
+
+    /**
+     * Уже есть такая заметка? Ключ — название в пределах своих записей.
+     *
+     * @param array<string, mixed> $row
+     */
+    private function locate(array $row, Viewer $viewer): ?Note
+    {
+        /** @var Note|null $note */
+        $note = Note::query()
+            ->where('user_id', $viewer->id())
+            ->where('title', (string) $row['title'])
+            ->first();
+
+        return $note;
+    }
+
+    /**
+     * Поля заметки из строки файла.
+     *
+     * @param array<string, mixed> $row
+     *
+     * @return array<string, mixed>
+     */
+    private function fields(array $row): array
+    {
+        return [
+            'title'  => (string) $row['title'],
+            'body'   => (string) ($row['body'] ?? ''),
+            'pinned' => in_array(mb_strtolower((string) ($row['pinned'] ?? '')), ['да', '1', 'true'], true) ? 1 : 0,
+        ];
     }
 
     public function create(): Response

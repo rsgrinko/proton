@@ -52,7 +52,7 @@ final class UsersController extends Controller
             'active'        => ['Активен', static fn (User $user): string => $user->isActive() ? 'да' : 'нет'],
             'created_at'    => 'Заведён',
             'last_login_at' => 'Последний вход',
-        ], 'users', 'user', 'admin.users');
+        ], 'users', 'user', 'admin.users', $request);
     }
 
     /**

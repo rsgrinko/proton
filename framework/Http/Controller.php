@@ -11,7 +11,10 @@ use Rsgrinko\Proton\Database\Model\RecordNotFound;
 use Rsgrinko\Proton\Database\Query\Builder;
 use Rsgrinko\Proton\Support\Audit;
 use Rsgrinko\Proton\Support\Config;
+use Rsgrinko\Proton\Queue\Queue;
 use Rsgrinko\Proton\Support\Export;
+use Rsgrinko\Proton\Support\ExportJob;
+use Rsgrinko\Proton\Support\Exports;
 use Rsgrinko\Proton\Support\Filter;
 use Rsgrinko\Proton\Support\Filters;
 use Rsgrinko\Proton\Support\Validator;
@@ -144,9 +147,31 @@ abstract class Controller
      *
      * @param array<string, string|array{0: string, 1: callable}> $columns
      */
-    protected function exportCsv(Builder $query, array $columns, string $name, string $entity = '', string $route = ''): Response
-    {
+    protected function exportCsv(
+        Builder $query,
+        array $columns,
+        string $name,
+        string $entity = '',
+        string $route = '',
+        ?Request $request = null
+    ): Response {
         if (!Export::fits($query)) {
+            // Большую выборку отдаёт очередь: файл соберётся в фоне, а человек
+            // получит ссылку уведомлением
+            if ($request !== null && Exports::get($name) !== null) {
+                Queue::push(ExportJob::class, [
+                    'kind'    => $name,
+                    'params'  => $request->query,
+                    'user_id' => (int) $request->attribute('user')?->id(),
+                ]);
+
+                Audit::action($entity !== '' ? $entity : $name, 0, 'заказана фоновая выгрузка: ' . $name);
+
+                $this->flash('Строк слишком много для мгновенной выгрузки — готовлю файл в фоне, пришлю ссылку уведомлением');
+
+                return $this->redirect($route !== '' ? $route : 'home');
+            }
+
             $this->flash('Слишком много строк для выгрузки — сузьте отбор (предел ' . Export::limit() . ')', 'error');
 
             return $this->redirect($route !== '' ? $route : 'home');

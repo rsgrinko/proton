@@ -9,11 +9,18 @@ declare(strict_types=1);
  * @var \Rsgrinko\Proton\Support\Filters $filters
  */
 
+use Rsgrinko\Proton\Support\ImportPlan;
 use Rsgrinko\Proton\Support\ImportReport;
 use Rsgrinko\Proton\View\View;
 
 /** @var ImportReport|null $report отчёт после загрузки файла */
 $report = View::takeStash('import');
+
+/** @var ImportPlan|null $plan что получится, если подтвердить загрузку */
+$plan = View::takeStash('import_plan');
+
+/** @var string $planFile метка отложенного файла */
+$planFile = (string) View::takeStash('import_file', '');
 ?>
 <div class="row">
     <h1 style="margin: 0;">Заметки</h1>
@@ -44,14 +51,59 @@ $report = View::takeStash('import');
     </div>
 <?php } ?>
 
+<?php if ($plan instanceof ImportPlan) { ?>
+    <div class="card" style="border-color: var(--accent);">
+        <h2>Что получится: <?= View::e($plan->summary()) ?></h2>
+
+        <?php if ($plan->sample !== []) { ?>
+            <div class="table-wrap">
+                <table class="list">
+                    <tr class="head">
+                        <th>Строка</th>
+                        <th>Что сделаем</th>
+                        <th>Название</th>
+                        <th class="hide-sm">Причина отказа</th>
+                    </tr>
+
+                    <?php foreach ($plan->sample as $row) { ?>
+                        <tr>
+                            <td class="muted small"><?= (int) $row['line'] ?></td>
+                            <td>
+                                <span class="badge <?= $row['verdict'] === ImportPlan::SKIP ? 'error' : ($row['verdict'] === ImportPlan::UPDATE ? 'warn' : 'ok') ?>">
+                                    <?= View::e(ImportPlan::label((string) $row['verdict'])) ?>
+                                </span>
+                            </td>
+                            <td><?= View::e((string) ($row['data']['title'] ?? '')) ?></td>
+                            <td class="hide-sm muted small"><?= View::e((string) $row['error'] ?: '—') ?></td>
+                        </tr>
+                    <?php } ?>
+                </table>
+            </div>
+
+            <?php if ($plan->total() > count($plan->sample)) { ?>
+                <p class="muted small">Показаны первые <?= count($plan->sample) ?> строк из <?= $plan->total() ?>.</p>
+            <?php } ?>
+        <?php } ?>
+
+        <?php if ($plan->any() && $planFile !== '') { ?>
+            <form method="post" action="<?= View::e(View::route('notes.import.confirm')) ?>">
+                <?= View::csrf() ?>
+                <input type="hidden" name="file" value="<?= View::e($planFile) ?>">
+                <button type="submit" class="primary">Загрузить</button>
+                <span class="muted small">Файл уже у нас — присылать заново не нужно</span>
+            </form>
+        <?php } ?>
+    </div>
+<?php } ?>
+
 <?php if (View::can('notes.manage')) { ?>
     <div class="card">
         <h2>Загрузка из CSV</h2>
 
         <p class="muted small">
             Колонки: <span class="mono">Название</span>, <span class="mono">Текст</span>,
-            <span class="mono">Закреплена</span> — такие же, как в выгрузке. Плохая строка
-            попадёт в отчёт, остальные загрузятся.
+            <span class="mono">Закреплена</span> — такие же, как в выгрузке. Сначала покажем,
+            что получится: заметка с тем же названием обновится, а не задвоится.
         </p>
 
         <form method="post" action="<?= View::e(View::route('notes.import')) ?>" enctype="multipart/form-data">
@@ -59,7 +111,7 @@ $report = View::takeStash('import');
 
             <div class="row">
                 <input type="file" name="file" accept=".csv,text/csv" required>
-                <button type="submit" class="primary">Загрузить</button>
+                <button type="submit" class="primary">Посмотреть, что получится</button>
             </div>
         </form>
     </div>

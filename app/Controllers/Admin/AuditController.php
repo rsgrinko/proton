@@ -39,7 +39,7 @@ final class AuditController extends Controller
             'entity_id'   => 'Запись',
             'description' => 'Описание',
             'ip'          => 'Адрес',
-        ], 'audit', 'audit', 'admin.audit');
+        ], 'audit', 'audit', 'admin.audit', $request);
     }
 
     private function listFilters(Request $request): Filters
