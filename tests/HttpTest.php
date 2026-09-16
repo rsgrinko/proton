@@ -20,9 +20,11 @@ use Rsgrinko\Proton\Models\ApiToken;
 use Rsgrinko\Proton\Models\Role;
 use Rsgrinko\Proton\Models\User;
 use Rsgrinko\Proton\Models\UserNotification;
+use Rsgrinko\Proton\Models\IncomingHook;
 use Rsgrinko\Proton\Models\Webhook;
 use Rsgrinko\Proton\Models\WebhookDelivery;
 use Rsgrinko\Proton\Support\Settings;
+use Rsgrinko\Proton\Webhooks\Incoming;
 
 /**
  * Запрос к ядру от лица пользователя (или гостя, если его нет).
@@ -356,6 +358,32 @@ test('http: подписка на события заводится и пров�
     assertStatus(302, httpRequest('POST', '/admin/webhooks/' . $webhook->id() . '/delete', httpAdmin()));
     assertNull(Webhook::find($webhook->id()));
     assertSame(0, WebhookDelivery::query()->where('webhook_id', $webhook->id())->count(), 'журнал ушёл вместе с подпиской');
+});
+
+test('http: кнопка «Проверить» шлёт источнику пробную посылку и пишет в журнал', function (): void {
+    Incoming::reset();
+
+    Incoming::register('http_test', 'Проверка из панели', 'HTTP_TEST_HOOK_TOKEN', static function (): void {});
+
+    putenv('HTTP_TEST_HOOK_TOKEN=токен-панели');
+
+    $before = IncomingHook::query()->count();
+
+    $response = httpRequest('POST', '/admin/webhooks/incoming/test', httpAdmin(), ['source' => 'http_test']);
+
+    assertStatus(302, $response);
+    assertSame($before + 1, IncomingHook::query()->count(), 'посылка легла в журнал сразу, не через очередь');
+
+    $hook = assertNotNull(IncomingHook::query()->orderBy('id', 'desc')->first());
+
+    assertSame(IncomingHook::DONE, (string) $hook->raw('status'));
+    assertSame('incoming.test', (string) $hook->raw('event'));
+
+    // Неизвестный источник не роняет страницу
+    assertStatus(302, httpRequest('POST', '/admin/webhooks/incoming/test', httpAdmin(), ['source' => 'нет-такого']));
+
+    putenv('HTTP_TEST_HOOK_TOKEN');
+    Incoming::reset();
 });
 
 test('http: список фильтруется и сортируется параметрами адреса', function (): void {

@@ -113,6 +113,13 @@ $pretty = static function (mixed $payload): string {
 <div class="card">
     <h2>Источники</h2>
 
+    <p class="muted small">
+        «Проверить» шлёт себе пробную посылку тем же путём, что настоящая система:
+        с токеном из <span class="mono">.env</span> сервера (в панель он не уходит) и
+        событием <span class="mono">incoming.test</span>. Результат виден сразу — строкой
+        в посылках ниже, без очереди и ожидания.
+    </p>
+
     <?php if ($sources === []) { ?>
         <p class="muted small">Ни одного источника не объявлено — см. <span class="mono">config/incoming.php</span>.</p>
     <?php } else { ?>
@@ -123,6 +130,7 @@ $pretty = static function (mixed $payload): string {
                     <th>Название</th>
                     <th>Адрес приёма</th>
                     <th>Токен</th>
+                    <th></th>
                 </tr>
 
                 <?php foreach ($sources as $key => $source) { ?>
@@ -138,6 +146,13 @@ $pretty = static function (mixed $payload): string {
                                 <span class="badge ok">по токену</span>
                                 <div class="muted small">значение в <span class="mono">.env</span>, переменная <span class="mono"><?= View::e($source['token']) ?></span></div>
                             <?php } ?>
+                        </td>
+                        <td class="right">
+                            <form method="post" action="<?= View::e(View::route('admin.webhooks.incoming.test')) ?>">
+                                <?= View::csrf() ?>
+                                <input type="hidden" name="source" value="<?= View::e((string) $key) ?>">
+                                <button type="submit">Проверить</button>
+                            </form>
                         </td>
                     </tr>
                 <?php } ?>

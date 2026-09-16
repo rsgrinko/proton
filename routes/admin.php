@@ -63,6 +63,7 @@ return static function (Router $router): void {
         $router->group(['prefix' => '/webhooks', 'middleware' => 'can:' . Permission::WEBHOOKS_MANAGE], function (Router $router): void {
             $router->get('', [WebhooksController::class, 'index'])->name('admin.webhooks');
             $router->get('/incoming', [WebhooksController::class, 'incoming'])->name('admin.webhooks.incoming');
+            $router->post('/incoming/test', [WebhooksController::class, 'testIncoming'])->name('admin.webhooks.incoming.test');
             $router->get('/new', [WebhooksController::class, 'create'])->name('admin.webhooks.create');
             $router->post('/new', [WebhooksController::class, 'store']);
             $router->get('/{id:\d+}', [WebhooksController::class, 'show'])->name('admin.webhooks.show');

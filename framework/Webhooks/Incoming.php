@@ -38,6 +38,9 @@ final class Incoming
     /** Заголовок с токеном */
     public const HEADER = 'x-proton-token';
 
+    /** Пробная посылка себе — кнопка «Проверить» у источника в панели */
+    public const TEST_EVENT = 'incoming.test';
+
     /** @var array<string, array{label: string, token: string, handler: callable}>|null */
     private static ?array $sources = null;
 
@@ -121,6 +124,38 @@ final class Incoming
 
             return IncomingHook::FAILED;
         }
+    }
+
+    /**
+     * Пробная посылка источнику: тот же путь, что у настоящего запроса, только
+     * тело и токен собираем сами — токен берём из .env на сервере, в панель
+     * его значение никогда не уходит.
+     */
+    public static function test(string $key): string
+    {
+        $source = self::source($key);
+
+        if ($source === null) {
+            return IncomingHook::UNKNOWN;
+        }
+
+        $payload = [
+            'event'   => self::TEST_EVENT,
+            'message' => 'Проверка источника «' . $source['label'] . '»',
+            'sent_at' => date('Y-m-d H:i:s'),
+        ];
+
+        $headers = [];
+
+        if ($source['token'] !== '') {
+            $token = Env::string($source['token'], '');
+
+            if ($token !== '') {
+                $headers[self::HEADER] = $token;
+            }
+        }
+
+        return self::receive($key, Request::create('POST', '/api/v1/hooks/' . $key, $payload, [], $headers));
     }
 
     /**

@@ -214,6 +214,37 @@ final class WebhooksController extends Controller
         return $this->redirect('admin.webhooks.show', ['id' => $webhook->id()]);
     }
 
+    /**
+     * Пробная посылка себе, как от источника: проверяет и токен, и обработчик,
+     * ничего не дожидаясь в очереди — результат виден сразу, строкой в журнале.
+     */
+    public function testIncoming(Request $request): Response
+    {
+        $key = trim($request->text('source'));
+
+        if (Incoming::source($key) === null) {
+            $this->flash('Такого источника нет', 'error');
+
+            return $this->redirect('admin.webhooks.incoming');
+        }
+
+        $status = Incoming::test($key);
+
+        $labels = [
+            IncomingHook::DONE     => ['Обработчик отработал без ошибок', 'ok'],
+            IncomingHook::FAILED   => ['Токен принят, но обработчик упал — подробности в журнале ниже', 'error'],
+            IncomingHook::REJECTED => ['Токен не подошёл или источник не настроен — подробности в журнале ниже', 'error'],
+        ];
+
+        [$message, $type] = $labels[$status] ?? ['Не разобрать, что случилось', 'error'];
+
+        Audit::action('incoming', 0, 'пробная посылка источнику «' . $key . '»: ' . $status);
+
+        $this->flash($message, $type);
+
+        return $this->redirect('admin.webhooks.incoming');
+    }
+
     public function delete(int $id): Response
     {
         $webhook = $this->webhook($id);
