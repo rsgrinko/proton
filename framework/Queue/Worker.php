@@ -18,6 +18,7 @@ use Rsgrinko\Proton\RateLimit\RateLimiter;
 use Rsgrinko\Proton\Support\Config;
 use Rsgrinko\Proton\Support\ExportFile;
 use Rsgrinko\Proton\Support\Logger;
+use Rsgrinko\Proton\Support\Profiler;
 use Rsgrinko\Proton\Support\Trash;
 use Rsgrinko\Proton\Support\RequestId;
 use Throwable;
@@ -172,23 +173,32 @@ final class Worker
         /** @var Job $job */
         $job = new $class();
 
+        // Своя пачка запросов на каждую задачу: иначе счётчик копится
+        // с предыдущей и цифры ничего не значат
+        Profiler::reset();
+
         $startedAt = microtime(true);
 
         try {
             $job->handle($payload);
 
-            Queue::complete((int) $row['id']);
+            $profile = $this->profile($startedAt);
+
+            Queue::complete((int) $row['id'], $profile);
 
             $this->logger->info('Задача выполнена', [
-                'id'    => (int) $row['id'],
-                'job'   => $class,
-                'ms'    => (int) round((microtime(true) - $startedAt) * 1000),
+                'id'      => (int) $row['id'],
+                'job'     => $class,
+                'ms'      => $profile['duration_ms'],
+                'queries' => $profile['queries_count'],
             ]);
 
             return true;
         } catch (Throwable $e) {
+            $profile = $this->profile($startedAt);
+
             $attempt = (int) $row['attempts'];
-            $again   = Queue::fail($row, $e->getMessage(), $job->backoff($attempt));
+            $again   = Queue::fail($row, $e->getMessage(), $job->backoff($attempt), $profile);
 
             $this->logger->error('Задача упала', [
                 'id'      => (int) $row['id'],
@@ -208,6 +218,22 @@ final class Worker
 
             return false;
         }
+    }
+
+    /**
+     * Сколько заняла задача и сколько сходила в базу. Запросы считаются, только
+     * когда включён APP_DEBUG — на бою это лишняя память на каждую задачу,
+     * а вот время выполнения ничего не стоит и нужно всегда.
+     *
+     * @return array{duration_ms: int, queries_count: int|null, queries_ms: float|null}
+     */
+    private function profile(float $startedAt): array
+    {
+        return [
+            'duration_ms'   => (int) round((microtime(true) - $startedAt) * 1000),
+            'queries_count' => Profiler::enabled() ? Profiler::count() : null,
+            'queries_ms'    => Profiler::enabled() ? Profiler::time() : null,
+        ];
     }
 
     /**

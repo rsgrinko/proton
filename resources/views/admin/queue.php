@@ -104,6 +104,8 @@ $badges = [
                         <th><?= View::partial('sort', ['filters' => $filters, 'route' => 'admin.queue', 'column' => 'priority', 'label' => 'Важность']) ?></th>
                         <th>Состояние</th>
                         <th class="hide-sm">Попытки</th>
+                        <th class="hide-sm"><?= View::partial('sort', ['filters' => $filters, 'route' => 'admin.queue', 'column' => 'duration_ms', 'label' => 'Время']) ?></th>
+                        <th class="hide-sm">SQL</th>
                         <th class="hide-sm"><?= View::partial('sort', ['filters' => $filters, 'route' => 'admin.queue', 'column' => 'created_at', 'label' => 'Создана']) ?></th>
                     </tr>
 
@@ -122,6 +124,10 @@ $badges = [
                             <td class="small"><?= (int) ($job['priority'] ?? 0) ?></td>
                             <td><span class="badge <?= View::e($badges[$status] ?? 'muted') ?>"><?= View::e($statuses[$status] ?? $status) ?></span></td>
                             <td class="hide-sm small"><?= (int) $job['attempts'] ?> из <?= (int) $job['max_attempts'] ?></td>
+                            <td class="hide-sm small"><?= $job['duration_ms'] !== null ? (int) $job['duration_ms'] . ' мс' : '—' ?></td>
+                            <td class="hide-sm small"><?= $job['queries_count'] !== null
+                                ? (int) $job['queries_count'] . ' / ' . number_format((float) $job['queries_ms'], 1, ',', ' ') . ' мс'
+                                : '—' ?></td>
                             <td class="hide-sm muted small"><?= View::e(View::ago((string) $job['created_at'])) ?></td>
                         </tr>
                     <?php } ?>

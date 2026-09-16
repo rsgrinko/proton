@@ -39,7 +39,7 @@ final class QueueController extends Controller
             Filter::text('queue', 'Очередь', 'queue', 'default, webhooks'),
             Filter::search('q', 'Поиск', ['job_class', 'error'], 'класс задачи или ошибка'),
             Filter::dates('when', 'Когда', 'created_at'),
-        ])->sortable(['id', 'priority', 'created_at'], 'id');
+        ])->sortable(['id', 'priority', 'created_at', 'duration_ms'], 'id');
 
         $query = $filters->apply(Connection::instance()->table('jobs'));
 

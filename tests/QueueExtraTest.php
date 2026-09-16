@@ -15,7 +15,9 @@ use Rsgrinko\Proton\Models\Setting;
 use Rsgrinko\Proton\Models\User;
 use Rsgrinko\Proton\Queue\Queue;
 use Rsgrinko\Proton\Queue\Scheduler;
+use Rsgrinko\Proton\Queue\Worker;
 use Rsgrinko\Proton\Support\Env;
+use Rsgrinko\Proton\Support\Profiler;
 use Rsgrinko\Proton\Webhooks\Incoming;
 
 test('очередь: важная задача разбирается раньше обычной', function (): void {
@@ -246,5 +248,40 @@ test('входящие вебхуки: упавший обработчик не 
         assertContains('обработчик сломался', (string) $hook->raw('error'));
 
         Incoming::reset();
+    });
+});
+
+test('очередь: воркер пишет время задачи и число запросов к базе', function (): void {
+    withOwnDatabase(static function (): void {
+        withConfig(['app.debug' => true], static function (): void {
+            Profiler::reset();
+
+            $id = Queue::push(QueueTestJob::class, ['mark' => 'профиль']);
+
+            (new Worker())->run(true);
+
+            $row = assertNotNull(Connection::instance()->selectOne(
+                'SELECT * FROM jobs WHERE id = :id',
+                ['id' => $id]
+            ));
+
+            assertSame(Queue::DONE, (string) $row['status']);
+            assertTrue((int) $row['duration_ms'] >= 0, 'время выполнения записано');
+            assertTrue((int) $row['queries_count'] >= 1, 'задача пишет настройку — хотя бы один запрос был');
+            assertTrue((float) $row['queries_ms'] >= 0);
+        });
+    });
+});
+
+test('очередь: у упавшей задачи время тоже посчитано', function (): void {
+    withOwnDatabase(static function (): void {
+        Queue::push(QueueFailingJob::class);
+
+        (new Worker())->run(true);
+
+        $row = assertNotNull(Connection::instance()->selectOne('SELECT * FROM jobs LIMIT 1'));
+
+        assertSame(Queue::QUEUED, (string) $row['status'], 'после первой ошибки задача ждёт повтора');
+        assertTrue((int) $row['duration_ms'] >= 0, 'время посчитано даже у упавшей задачи');
     });
 });

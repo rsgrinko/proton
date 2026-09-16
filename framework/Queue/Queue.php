@@ -118,29 +118,32 @@ final class Queue
 
     /**
      * Задача выполнена.
+     *
+     * @param array{duration_ms?: int, queries_count?: int|null, queries_ms?: float|null}|null $profile
      */
-    public static function complete(int $id): void
+    public static function complete(int $id, ?array $profile = null): void
     {
-        Connection::instance()->update('jobs', [
+        Connection::instance()->update('jobs', array_merge([
             'status'      => self::DONE,
             'finished_at' => Connection::now(),
             'updated_at'  => Connection::now(),
             'error'       => null,
-        ], ['id' => $id]);
+        ], self::profileColumns($profile)), ['id' => $id]);
     }
 
     /**
      * Задача упала: возвращаем в очередь с паузой или признаём неудавшейся.
      *
-     * @param array<string, mixed> $row
+     * @param array<string, mixed>                                                             $row
+     * @param array{duration_ms?: int, queries_count?: int|null, queries_ms?: float|null}|null  $profile
      */
-    public static function fail(array $row, string $error, int $backoff): bool
+    public static function fail(array $row, string $error, int $backoff, ?array $profile = null): bool
     {
         $attempts = (int) $row['attempts'];
         $max      = (int) $row['max_attempts'];
         $again    = $attempts < $max;
 
-        Connection::instance()->update('jobs', [
+        Connection::instance()->update('jobs', array_merge([
             // Исчерпала попытки — уходит в «мёртвые»: их разбирают руками,
             // а не повторяют бесконечно
             'status'       => $again ? self::QUEUED : self::DEAD,
@@ -148,9 +151,30 @@ final class Queue
             'error'        => mb_substr($error, 0, 1000),
             'finished_at'  => $again ? null : Connection::now(),
             'updated_at'   => Connection::now(),
-        ], ['id' => (int) $row['id']]);
+        ], self::profileColumns($profile)), ['id' => (int) $row['id']]);
 
         return $again;
+    }
+
+    /**
+     * Колонки профиля для UPDATE — своим методом, чтобы complete() и fail()
+     * не дублировали одну и ту же сборку.
+     *
+     * @param array{duration_ms?: int, queries_count?: int|null, queries_ms?: float|null}|null $profile
+     *
+     * @return array<string, mixed>
+     */
+    private static function profileColumns(?array $profile): array
+    {
+        if ($profile === null) {
+            return [];
+        }
+
+        return [
+            'duration_ms'   => $profile['duration_ms'] ?? null,
+            'queries_count' => $profile['queries_count'] ?? null,
+            'queries_ms'    => $profile['queries_ms'] ?? null,
+        ];
     }
 
     /**
