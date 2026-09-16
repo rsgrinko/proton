@@ -56,7 +56,7 @@ $db->table('users')->where(function (Builder $query): void {
 ```
 
 Ещё есть `join`/`leftJoin`, `groupBy`, `having`, `when` (условие только если значение
-чего-то стоит), `paginate`, `chunk`, `pluck`, `count`, `sum`, `max`, `exists`,
+чего-то стоит), `paginate`, `chunk`, `cursor`, `pluck`, `count`, `sum`, `max`, `exists`,
 `increment`, `insert`, `update`, `delete`.
 
 Три правила, на которых всё держится:
@@ -72,8 +72,8 @@ $db->table('users')->where(function (Builder $query): void {
 `remember()` — не бить в базу заново, если ответ уже лежит в `Support\Cache`:
 
 ```php
-$roles = Role::query()->remember(300)->get();                          // ключ — от текста запроса
-$open  = Order::where('paid', 0)->remember(60, 'orders:unpaid')->get();
+$roles  = Role::query()->remember(300)->get();                           // ключ — от текста запроса
+$pinned = Note::where('pinned', 1)->remember(60, 'notes:pinned')->get();
 ```
 
 Без своего ключа он считается от текста запроса и параметров — одинаковый вызов
@@ -83,8 +83,8 @@ $open  = Order::where('paid', 0)->remember(60, 'orders:unpaid')->get();
 
 ```php
 Events::listen('model.saved', function (array $payload): void {
-    if ($payload['model'] instanceof Order) {
-        Cache::forget('query:orders:unpaid:get');   // 'get' — потому что кэшировали ->get()
+    if ($payload['model'] instanceof Note) {
+        Cache::forget('query:notes:pinned:get');   // 'get' — потому что кэшировали ->get()
     }
 });
 ```
@@ -94,6 +94,36 @@ Events::listen('model.saved', function (array $payload): void {
 в одну запись. Кэшируются `get()`, `count()`, `sum()`, `max()` и всё, что
 вызывает их внутри (`first()`, `value()`, `pluck()`, `exists()`); подгрузка
 связей через `with()` идёт отдельными запросами и под этот кэш не попадает.
+
+### Большие выборки
+
+`get()` держит всю выборку в памяти сразу — для консольной команды или
+разовой правки на тысячах строк это может быть слишком. Два способа обойти
+таблицу, не поднимая её целиком:
+
+```php
+Note::query()->where('pinned', 0)->chunk(500, function (array $notes): void {
+    foreach ($notes as $note) {
+        // страница из 500 моделей за раз
+    }
+});
+
+foreach (Note::query()->where('pinned', 0)->cursor() as $note) {
+    // одна модель за раз, без промежуточных страниц в памяти
+}
+```
+
+`chunk()` — постраничный `LIMIT`/`OFFSET`, `cursor()` — один запрос и построчная
+выдача (в MySQL — по-настоящему, `PDO::MYSQL_ATTR_USE_BUFFERED_QUERY => false`,
+иначе `fetch()` в цикле экономии не даёт: весь результат всё равно уезжает в
+память при выполнении запроса). Оба одинаково не защищены от того, что строки
+меняются прямо во время обхода: чужой процесс правит или удаляет как раз те
+записи, что вот-вот дойдут по `LIMIT`/`OFFSET`, — часть из них рискует
+проскочить незамеченной. Для таблицы, которая сама меняется во время обхода,
+надёжнее собственное условие по возрастающему `id` в `where()` — так обходит
+`RebuildNoteSlugsJob` (`docs/QUEUE.md`, раздел «Очередь»), только не одним
+вызовом, а порциями через самопродолжающуюся задачу: обход большой таблицы
+в очереди не должен занимать воркер часами напролёт.
 
 ## Модели: Active Record
 

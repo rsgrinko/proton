@@ -122,6 +122,30 @@ test('база: страница результатов считает всё и
     assertCount(3, $page['items']);
 });
 
+test('база: cursor() отдаёт строки по одной, а не всей выборкой разом', function (): void {
+    $db = Connection::instance();
+
+    for ($i = 1; $i <= 5; $i++) {
+        $db->insert('settings', ['setting_key' => 'cursor.test.' . $i, 'value' => (string) $i, 'updated_at' => Connection::now()]);
+    }
+
+    afterTests(static function () use ($db): void {
+        $db->execute("DELETE FROM settings WHERE setting_key LIKE 'cursor.test.%'");
+    });
+
+    $cursor = $db->table('settings')->whereLike('setting_key', 'cursor.test.')->orderBy('setting_key')->cursor();
+
+    assertTrue($cursor instanceof Generator, 'генератор, а не готовый массив');
+
+    $values = [];
+
+    foreach ($cursor as $row) {
+        $values[] = (string) $row['value'];
+    }
+
+    assertSame(['1', '2', '3', '4', '5'], $values);
+});
+
 test('база: транзакция откатывается при ошибке', function (): void {
     $db = Connection::instance();
 

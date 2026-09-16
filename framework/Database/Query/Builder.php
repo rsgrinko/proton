@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Rsgrinko\Proton\Database\Query;
 
 use Closure;
+use Generator;
 use Rsgrinko\Proton\Cache\Cache;
 use Rsgrinko\Proton\Database\Connection;
 use Rsgrinko\Proton\Database\DatabaseException;
@@ -500,6 +501,12 @@ class Builder
      * Обходит таблицу порциями — чтобы не поднимать в память миллион строк.
      * Замыкание вернуло false — обход прекращается.
      *
+     * Каждая порция — свой запрос (LIMIT/OFFSET): если строки внутри колбэка
+     * удаляются или переставляют сортировку, часть записей может уйти между
+     * страницами незамеченной. Для разового скрипта или консольной команды
+     * это не страшно; там, где меняются как раз обходимые строки, надёжнее
+     * условие по возрастающему id в собственном where(), как у RebuildNoteSlugsJob.
+     *
      * @param callable(array<int, array<string, mixed>>): (bool|void) $callback
      */
     public function chunk(int $size, callable $callback): void
@@ -519,6 +526,20 @@ class Builder
 
             $page++;
         } while (count($rows) === $size);
+    }
+
+    /**
+     * То же самое, но одной строкой за раз вместо порций в памяти — для
+     * действительно больших таблиц, которые целиком в память не влезут.
+     * Одна выборка одним запросом, а не постраничные LIMIT/OFFSET: значит,
+     * и от той же нестабильности при изменении строк во время обхода, что
+     * и у chunk(), это тоже не защищает.
+     *
+     * @return Generator<int, array<string, mixed>>
+     */
+    public function cursor(): Generator
+    {
+        yield from $this->db->cursor($this->toSql(), $this->bindings);
     }
 
     /**

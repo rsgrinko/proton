@@ -167,6 +167,28 @@ test('связи: заметки автора и автор заметки', fun
     assertTrue(count($notes) >= 2, 'у автора должны быть его заметки');
 });
 
+test('модель: cursor() отдаёт модели по одной', function (): void {
+    $user = modelTestUser();
+
+    $marker = 'cursor_' . bin2hex(random_bytes(4));
+
+    foreach (['раз', 'два', 'три'] as $suffix) {
+        Note::create(['title' => $marker . '_' . $suffix])->forceFill(['user_id' => $user->id()])->save();
+    }
+
+    $query = Note::query()->where('user_id', $user->id())->whereLike('title', $marker)->orderBy('id');
+
+    $titles = [];
+
+    foreach ($query->cursor() as $note) {
+        assertTrue($note instanceof Note, 'cursor() отдаёт модели, а не сырые строки');
+
+        $titles[] = (string) $note->title;
+    }
+
+    assertSame([$marker . '_раз', $marker . '_два', $marker . '_три'], $titles);
+});
+
 test('связи: подгрузка через with() не ходит за каждой строкой', function (): void {
     $user = modelTestUser();
 

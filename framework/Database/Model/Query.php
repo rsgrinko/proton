@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Rsgrinko\Proton\Database\Model;
 
+use Generator;
 use Rsgrinko\Proton\Database\Query\Builder;
 
 /**
@@ -103,6 +104,22 @@ final class Query extends Builder
         $this->applyTrashed();
 
         return parent::get();
+    }
+
+    /**
+     * Модели по одной, без загрузки всей выборки в память разом. Связи
+     * через with() сюда не грузятся — они одним запросом на всю пачку моделей,
+     * а пачки тут целиком в памяти как раз и не бывает.
+     *
+     * @return Generator<int, Model>
+     */
+    public function cursor(): Generator
+    {
+        $this->applyTrashed();
+
+        foreach (parent::cursor() as $row) {
+            yield ($this->model)::fromRow($row);
+        }
     }
 
     /**

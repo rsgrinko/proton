@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Rsgrinko\Proton\Database;
 
+use Generator;
 use PDO;
 use PDOException;
 use PDOStatement;
@@ -127,6 +128,31 @@ final class Connection
     public function select(string $sql, array $params = []): array
     {
         return $this->run($sql, $params)->fetchAll();
+    }
+
+    /**
+     * Строки запроса по одной, без загрузки всей выборки в память разом.
+     *
+     * В MySQL без `MYSQL_ATTR_USE_BUFFERED_QUERY => false` весь результат
+     * всё равно уезжает в память при `execute()` — mysqlnd так устроен,
+     * `fetch()` в цикле сам по себе экономии не даёт. В SQLite курсор и так
+     * не хранит всё сразу, поэтому опция там просто ни на что не влияет.
+     *
+     * @param array<string|int, mixed> $params
+     *
+     * @return Generator<int, array<string, mixed>>
+     */
+    public function cursor(string $sql, array $params = []): Generator
+    {
+        $options = $this->isSqlite() ? [] : [PDO::MYSQL_ATTR_USE_BUFFERED_QUERY => false];
+
+        $statement = $this->run($sql, $params, $options);
+
+        while (($row = $statement->fetch()) !== false) {
+            yield $row;
+        }
+
+        $statement->closeCursor();
     }
 
     /**
@@ -481,11 +507,12 @@ final class Connection
 
     /**
      * @param array<string|int, mixed> $params
+     * @param array<int, mixed>        $options Драйверные опции prepare() — нужны cursor()
      */
-    private function run(string $sql, array $params): PDOStatement
+    private function run(string $sql, array $params, array $options = []): PDOStatement
     {
         try {
-            return $this->prepareAndRun($sql, $params);
+            return $this->prepareAndRun($sql, $params, $options);
         } catch (PDOException $e) {
             // Воркер живёт часами, и MySQL успевает закрыть соединение по
             // wait_timeout. Одна попытка переподключиться — и запрос повторяется
@@ -493,7 +520,7 @@ final class Connection
                 $this->reconnect();
 
                 try {
-                    return $this->prepareAndRun($sql, $params);
+                    return $this->prepareAndRun($sql, $params, $options);
                 } catch (PDOException $retry) {
                     $e = $retry;
                 }
@@ -505,10 +532,11 @@ final class Connection
 
     /**
      * @param array<string|int, mixed> $params
+     * @param array<int, mixed>        $options
      */
-    private function prepareAndRun(string $sql, array $params): PDOStatement
+    private function prepareAndRun(string $sql, array $params, array $options = []): PDOStatement
     {
-        $statement = $this->pdo->prepare($sql);
+        $statement = $this->pdo->prepare($sql, $options);
 
         foreach ($params as $key => $value) {
             $name = is_int($key) ? $key + 1 : ':' . ltrim((string) $key, ':');
