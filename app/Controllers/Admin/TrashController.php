@@ -7,6 +7,7 @@ namespace App\Controllers\Admin;
 use Rsgrinko\Proton\Access\AccessDenied;
 use Rsgrinko\Proton\Access\Viewer;
 use Rsgrinko\Proton\Database\Model\Model;
+use Rsgrinko\Proton\Events\Events;
 use Rsgrinko\Proton\Http\Controller;
 use Rsgrinko\Proton\Http\Request;
 use Rsgrinko\Proton\Http\Response;
@@ -58,7 +59,11 @@ final class TrashController extends Controller
 
         $record->restore();
 
-        Audit::action(Trash::kind($kind)['entity'] ?? $kind, $record->id(), 'запись возвращена из корзины');
+        $entity = Trash::kind($kind)['entity'] ?? $kind;
+
+        Audit::action($entity, $record->id(), 'запись возвращена из корзины');
+
+        Events::fire('trash.restored', ['kind' => $kind, 'entity' => $entity, 'record' => $record]);
 
         $this->flash('Запись возвращена');
 
@@ -73,9 +78,15 @@ final class TrashController extends Controller
     {
         [$kind, $record] = $this->find($request, $viewer);
 
+        $id = $record->id();
+
         $record->forceDelete();
 
-        Audit::deleted(Trash::kind($kind)['entity'] ?? $kind, $record->id(), 'запись удалена окончательно');
+        $entity = Trash::kind($kind)['entity'] ?? $kind;
+
+        Audit::deleted($entity, $id, 'запись удалена окончательно');
+
+        Events::fire('trash.destroyed', ['kind' => $kind, 'entity' => $entity, 'record' => $record]);
 
         $this->flash('Запись удалена окончательно');
 
@@ -110,15 +121,17 @@ final class TrashController extends Controller
         $model  = $kinds[$key]['model'];
         $action = (string) $data['action'];
         $done   = 0;
+        $entity = Trash::kind($key)['entity'] ?? $key;
+        $event  = $action === 'restore' ? 'trash.restored' : 'trash.destroyed';
 
         /** @var Model $record */
         foreach ($model::query()->onlyTrashed()->whereIn('id', $ids)->get() as $record) {
             $action === 'restore' ? $record->restore() : $record->forceDelete();
 
+            Events::fire($event, ['kind' => $key, 'entity' => $entity, 'record' => $record]);
+
             $done++;
         }
-
-        $entity = Trash::kind($key)['entity'] ?? $key;
 
         if ($action === 'restore') {
             Audit::action($entity, 0, 'массовое возвращение из корзины: ' . $done);
@@ -147,8 +160,13 @@ final class TrashController extends Controller
         }
 
         $removed = Trash::query($key)?->forceDelete() ?? 0;
+        $entity  = Trash::kind($key)['entity'] ?? $key;
 
-        Audit::deleted(Trash::kind($key)['entity'] ?? $key, 0, 'корзина очищена целиком: ' . $removed);
+        Audit::deleted($entity, 0, 'корзина очищена целиком: ' . $removed);
+
+        if ($removed > 0) {
+            Events::fire('trash.cleared', ['kind' => $key, 'entity' => $entity, 'count' => $removed]);
+        }
 
         $this->flash($removed > 0 ? 'Корзина очищена, удалено: ' . $removed : 'Корзина была пуста');
 

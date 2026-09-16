@@ -8,6 +8,7 @@ declare(strict_types=1);
 
 use App\Models\Note;
 use Rsgrinko\Proton\Database\Model\Factory;
+use Rsgrinko\Proton\Events\Events;
 use Rsgrinko\Proton\Models\AuditEntry;
 use Rsgrinko\Proton\Models\Role;
 use Rsgrinko\Proton\Models\User;
@@ -191,6 +192,90 @@ test('корзина: «очистить» убирает весь раздел 
         assertSame(1, User::query()->withTrashed()->count(), 'остался только админ');
 
         actingAs(null);
+    });
+});
+
+test('корзина: возврат и удаление отдают событие для вебхуков', function (): void {
+    withOwnDatabase(static function (): void {
+        /** @var User $admin */
+        $admin = Factory::of(User::class)->create(['role_id' => Role::admin()?->id() ?? 0]);
+        /** @var User $victim */
+        $victim = Factory::of(User::class)->create();
+
+        $victim->delete();
+
+        Events::reset();
+
+        $fired = [];
+
+        Events::listen('trash.restored', static function (array $payload) use (&$fired): void {
+            $fired[] = ['event' => 'trash.restored', 'kind' => $payload['kind'] ?? ''];
+        });
+
+        Events::listen('trash.destroyed', static function (array $payload) use (&$fired): void {
+            $fired[] = ['event' => 'trash.destroyed', 'kind' => $payload['kind'] ?? ''];
+        });
+
+        actingAs($admin);
+
+        post('/admin/trash/restore', ['kind' => 'users', 'id' => $victim->id()]);
+
+        $victim->delete();
+
+        post('/admin/trash/destroy', ['kind' => 'users', 'id' => $victim->id()]);
+
+        actingAs(null);
+        Events::reset();
+
+        assertSame(
+            [['event' => 'trash.restored', 'kind' => 'users'], ['event' => 'trash.destroyed', 'kind' => 'users']],
+            $fired
+        );
+    });
+});
+
+test('корзина: массовые действия и очистка тоже отдают события', function (): void {
+    withOwnDatabase(static function (): void {
+        /** @var User $admin */
+        $admin = Factory::of(User::class)->create(['role_id' => Role::admin()?->id() ?? 0]);
+        /** @var array<int, User> $people */
+        $people = Factory::of(User::class)->times(2)->create();
+
+        foreach ($people as $person) {
+            $person->delete();
+        }
+
+        Events::reset();
+
+        $restored = 0;
+        $cleared  = null;
+
+        Events::listen('trash.restored', static function () use (&$restored): void {
+            $restored++;
+        });
+
+        Events::listen('trash.cleared', static function (array $payload) use (&$cleared): void {
+            $cleared = $payload;
+        });
+
+        actingAs($admin);
+
+        $ids = array_map(static fn (User $user): int => $user->id(), $people);
+
+        post('/admin/trash/bulk', ['kind' => 'users', 'action' => 'restore', 'ids' => [$ids[0]]]);
+
+        assertSame(1, $restored, 'массовый возврат тоже событие пишет');
+
+        foreach ($people as $person) {
+            $person->delete();
+        }
+
+        post('/admin/trash/clear', ['kind' => 'users']);
+
+        actingAs(null);
+        Events::reset();
+
+        assertSame(['kind' => 'users', 'entity' => 'user', 'count' => 2], $cleared);
     });
 });
 

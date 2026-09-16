@@ -19,3 +19,7 @@ use Rsgrinko\Proton\Webhooks\Webhooks;
 Webhooks::register('note.created', 'Заметка создана', 'Заметки');
 Webhooks::register('note.updated', 'Заметка изменена', 'Заметки');
 Webhooks::register('note.deleted', 'Заметка удалена', 'Заметки');
+
+Webhooks::register('trash.restored', 'Запись возвращена из корзины', 'Корзина');
+Webhooks::register('trash.destroyed', 'Запись удалена из корзины окончательно', 'Корзина');
+Webhooks::register('trash.cleared', 'Раздел корзины очищен целиком', 'Корзина');
