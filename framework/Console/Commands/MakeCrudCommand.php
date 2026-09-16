@@ -21,9 +21,16 @@ use Rsgrinko\Proton\Support\Str;
  * bool, date, datetime, email. Подпись — то, что увидит человек в форме и в
  * сообщении об ошибке; без неё берётся имя поля.
  *
+ * Флаг --api добавляет седьмой файл — контроллер в app/Controllers/Api/,
+ * тот же раздел, только под ключ вместо сеанса: список со страницами и
+ * поиском, карточка, создание, правка (PATCH меняет только присланные поля)
+ * и удаление. Формат ответа общий для всего API — success: {"data": …},
+ * ошибка: {"error": …}, дальше разбираться не нужно.
+ *
  * Маршруты, право и пункт меню команда не дописывает, а печатает готовыми
- * кусками: routes/web.php и config/menu.php — код приложения, и лезть в них
- * автоматической правкой опаснее, чем скопировать три строки.
+ * кусками: routes/web.php (и routes/api.php с --api) и config/menu.php —
+ * код приложения, и лезть в них автоматической правкой опаснее, чем
+ * скопировать несколько строк.
  */
 final class MakeCrudCommand extends Command
 {
@@ -51,7 +58,7 @@ final class MakeCrudCommand extends Command
 
     public function usage(): string
     {
-        return 'make:crud <Имя> [--fields="имя:тип:подпись,…"] [--no-soft-delete] [--force]';
+        return 'make:crud <Имя> [--fields="имя:тип:подпись,…"] [--no-soft-delete] [--api] [--force]';
     }
 
     public function run(): int
@@ -204,6 +211,7 @@ final class MakeCrudCommand extends Command
             '{{softSchema}}' => $soft ? "\n            \$table->softDeletes();" : '',
             '{{schema}}'    => $this->schema($fields),
             '{{rules}}'     => $this->rules($fields),
+            '{{updateRules}}' => $this->updateRules($fields),
             '{{labels}}'    => $this->labels($fields),
             '{{before}}'    => $this->before($fields),
             '{{after}}'     => $this->after($fields),
@@ -218,7 +226,7 @@ final class MakeCrudCommand extends Command
 
         $root = APP_ROOT;
 
-        return [
+        $plan = [
             $root . '/app/Models/' . $names['class'] . '.php'                         => $this->render('crud/model.stub', $replacements),
             $root . '/app/Controllers/Web/' . Str::plural($names['class']) . 'Controller.php' => $this->render('crud/controller.stub', $replacements),
             $root . '/migrations/' . date('YmdHis') . '_create_' . $names['table'] . '.php'   => $this->render('crud/migration.stub', $replacements),
@@ -227,6 +235,13 @@ final class MakeCrudCommand extends Command
             $root . '/resources/views/' . $names['views'] . '/show.php'               => $this->render('crud/show.stub', $replacements),
             $root . '/tests/' . Str::plural($names['class']) . 'Test.php'             => $this->render('crud/test.stub', $replacements),
         ];
+
+        if ($this->hasOption('api')) {
+            $plan[$root . '/app/Controllers/Api/' . Str::plural($names['class']) . 'Controller.php']
+                = $this->render('crud/api-controller.stub', $replacements);
+        }
+
+        return $plan;
     }
 
     /**
@@ -288,6 +303,26 @@ final class MakeCrudCommand extends Command
         foreach ($fields as $index => $field) {
             // Первое поле — название раздела, без него запись не опознать
             $rule = $index === 0 && $field['type'] === 'string' ? 'required|max:191' : self::TYPES[$field['type']]['rule'];
+
+            $lines[] = "            '" . $field['name'] . "'" . str_repeat(' ', $width - mb_strlen($field['name'])) . " => '" . $rule . "',";
+        }
+
+        return implode("\n", $lines);
+    }
+
+    /**
+     * Правила для правки через API: PATCH меняет то, что прислали, поэтому
+     * обязательных полей нет вовсе — даже у первого.
+     *
+     * @param array<int, array{name: string, type: string, label: string}> $fields
+     */
+    private function updateRules(array $fields): string
+    {
+        $lines = [];
+        $width = $this->width($fields);
+
+        foreach ($fields as $field) {
+            $rule = self::TYPES[$field['type']]['rule'];
 
             $lines[] = "            '" . $field['name'] . "'" . str_repeat(' ', $width - mb_strlen($field['name'])) . " => '" . $rule . "',";
         }
@@ -502,6 +537,20 @@ HTML;
         $this->line('3. Пункт меню — config/menu.php:');
         $this->line('');
         $this->line('    [\'title\' => \'' . $title . '\', \'route\' => \'' . $route . '.index\', \'permission\' => \'' . $route . '.view\'],');
+
+        if ($this->hasOption('api')) {
+            $this->line('');
+            $this->line('4. Маршруты API — routes/api.php, внутрь группы с \'api\':');
+            $this->line('');
+            $this->line('    $router->get(\'/' . $route . '\', [' . $class . '::class, \'index\'])->name(\'api.' . $route . '.index\');');
+            $this->line('    $router->post(\'/' . $route . '\', [' . $class . '::class, \'store\'])->name(\'api.' . $route . '.store\');');
+            $this->line('    $router->get(\'/' . $route . '/{id:\d+}\', [' . $class . '::class, \'show\'])->name(\'api.' . $route . '.show\');');
+            $this->line('    $router->patch(\'/' . $route . '/{id:\d+}\', [' . $class . '::class, \'update\'])->name(\'api.' . $route . '.update\');');
+            $this->line('    $router->delete(\'/' . $route . '/{id:\d+}\', [' . $class . '::class, \'delete\'])->name(\'api.' . $route . '.delete\');');
+            $this->line('');
+            $this->line('    use App\Controllers\Api\\' . $class . '; — вверху файла');
+        }
+
         $this->line('');
         $this->line('Потом: php bin/proton migrate и php bin/proton test');
     }

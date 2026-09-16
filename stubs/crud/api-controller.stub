@@ -1,0 +1,99 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Controllers\Api;
+
+use App\Models\{{class}};
+use Rsgrinko\Proton\Access\Scope;
+use Rsgrinko\Proton\Access\Viewer;
+use Rsgrinko\Proton\Http\Request;
+use Rsgrinko\Proton\Http\Response;
+use Rsgrinko\Proton\Support\Audit;
+
+/**
+ * «{{title}}» через API — тот же раздел, что и в панели, только для машин.
+ *
+ * Область видимости здесь та же: ключ принадлежит человеку, и через него
+ * доступны ровно его записи. Чужая запись не существует — 404, а не 403.
+ */
+final class {{plural}}Controller extends ApiController
+{
+    public function index(Request $request, Scope $scope): Response
+    {
+        $query = $scope->apply({{class}}::query())
+            ->when($request->text('q'), static fn ($query, string $needle) => $query->whereLike('{{first}}', $needle))
+            ->orderBy('id', 'desc');
+
+        return $this->paginated(
+            $query->paginate($this->page($request), $this->perPage()),
+            static fn ({{class}} ${{variable}}): array => ${{variable}}->toArray()
+        );
+    }
+
+    public function show(int $id, Scope $scope): Response
+    {
+        /** @var {{class}}|null ${{variable}} */
+        ${{variable}} = $scope->apply({{class}}::query())->where('id', $id)->first();
+
+        if (${{variable}} === null) {
+            return Response::error('{{title}}: запись не найдена', 404);
+        }
+
+        return $this->data(${{variable}}->toArray());
+    }
+
+    public function store(Request $request, Viewer $viewer): Response
+    {
+        $data = $this->payload($request, [
+{{rules}}
+        ]);
+
+        ${{variable}} = new {{class}}($data);
+
+        ${{variable}}->setAttribute('user_id', $viewer->id());
+        ${{variable}}->save();
+
+        Audit::created('{{route}}', ${{variable}}->id(), '{{title}} через API: ' . (string) ${{variable}}->raw('{{first}}'));
+
+        return $this->data(${{variable}}->toArray(), 201);
+    }
+
+    public function update(Request $request, int $id, Scope $scope): Response
+    {
+        /** @var {{class}}|null ${{variable}} */
+        ${{variable}} = $scope->apply({{class}}::query())->where('id', $id)->first();
+
+        if (${{variable}} === null) {
+            return Response::error('{{title}}: запись не найдена', 404);
+        }
+
+        $data = $this->payload($request, [
+{{updateRules}}
+        ]);
+
+        // Пустые поля не затираем: PATCH меняет то, что прислали
+        ${{variable}}->fill(array_filter($data, static fn (mixed $value): bool => $value !== null));
+        ${{variable}}->save();
+
+        Audit::updated('{{route}}', ${{variable}}->id(), '{{title}} через API: ' . (string) ${{variable}}->raw('{{first}}'));
+
+        return $this->data(${{variable}}->toArray());
+    }
+
+    public function delete(int $id, Scope $scope): Response
+    {
+        /** @var {{class}}|null ${{variable}} */
+        ${{variable}} = $scope->apply({{class}}::query())->where('id', $id)->first();
+
+        if (${{variable}} === null) {
+            return Response::error('{{title}}: запись не найдена', 404);
+        }
+
+        ${{variable}}->delete();
+
+        Audit::deleted('{{route}}', $id, '{{title}} через API');
+
+        return $this->data(['deleted' => true]);
+    }
+}
