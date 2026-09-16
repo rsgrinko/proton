@@ -1,5 +1,8 @@
 # Proton
 
+[![Тесты (GitHub)](https://github.com/rsgrinko/proton/actions/workflows/tests.yml/badge.svg)](https://github.com/rsgrinko/proton/actions/workflows/tests.yml)
+[![Тесты (Gitea)](https://gitea.rsgrinko.ru/homelab/proton/actions/workflows/tests.yml/badge.svg)](https://gitea.rsgrinko.ru/homelab/proton/actions/workflows/tests.yml)
+
 Микрофреймворк на PHP 8.1+ без composer. Из расширений нужны `pdo_sqlite` или
 `pdo_mysql`, `openssl`, `mbstring`, `json` — больше ничего.
 
