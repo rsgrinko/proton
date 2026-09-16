@@ -9,16 +9,19 @@ declare(strict_types=1);
  * реестр нужен для интерфейсов, чужих классов и всего, чему при сборке нужны
  * настройки.
  *
- *     'bind'      => [Storage::class => LocalStorage::class],
- *     'singleton' => [PriceList::class => static fn (Container $c) => new PriceList(...)],
- *
  * bind — новый объект на каждый запрос зависимости, singleton — один на процесс.
  * Для воркера «один на процесс» значит «до перезапуска»: объект с настройками
  * внутри переживёт их правку в панели.
  */
 
+use App\Contracts\NoteLimiter;
+use App\Services\ConfigNoteLimiter;
+
 return [
     'bind' => [
+        // Пример: NotesController просит NoteLimiter по интерфейсу, а какая
+        // проверка внутри — решает привязка, а не вызывающий код
+        NoteLimiter::class => ConfigNoteLimiter::class,
     ],
 
     'singleton' => [

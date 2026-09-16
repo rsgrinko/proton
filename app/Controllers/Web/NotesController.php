@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Controllers\Web;
 
+use App\Contracts\NoteLimiter;
 use App\Models\Note;
 use Rsgrinko\Proton\Access\Policy;
 use Rsgrinko\Proton\Access\Scope;
@@ -269,7 +270,7 @@ final class NotesController extends Controller
         ], 'Новая заметка');
     }
 
-    public function store(Request $request, Viewer $viewer): Response
+    public function store(Request $request, Viewer $viewer, NoteLimiter $limiter): Response
     {
         $data = $this->validate($request, [
             'title'  => 'required|max:191',
@@ -277,11 +278,10 @@ final class NotesController extends Controller
             'pinned' => 'nullable|boolean',
         ], ['title' => 'Название', 'body' => 'Текст']);
 
-        $limit = (int) Config::get('notes.per_user', 0);
-
-        // Ограничение правится из панели; 0 — без ограничения
-        if ($limit > 0 && Note::query()->where('user_id', $viewer->id())->count() >= $limit) {
-            $this->flash('Заметок уже ' . $limit . ', больше настройка не разрешает', 'error');
+        // Проверка лимита подставляется контейнером (config/services.php) —
+        // ограничение правится из панели, 0 в notes.per_user снимает его
+        if ($limiter->exceeded($viewer->id())) {
+            $this->flash('Заметок уже столько, что настройка не разрешает завести ещё', 'error');
 
             return $this->redirect('notes.index');
         }

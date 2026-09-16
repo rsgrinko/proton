@@ -188,9 +188,12 @@ Incoming::register('billing', 'Биллинг', 'BILLING_HOOK_TOKEN', static fun
         return;
     }
 
-    Queue::push(MarkOrderPaidJob::class, ['order' => (int) $payload['id']]);
+    Queue::push(RebuildNoteSlugsJob::class, ['order' => (int) $payload['id']]);
 });
 ```
+
+Живой пример — `config/incoming.php`: там же обработка без токена (эхо для проверки
+связи) и разбор чужого тела построчно.
 
 Третий аргумент — **имя переменной**, а не сам токен: значение кладут в `.env`,
 секрету в репозитории не место. Пустое имя означает «принимать без проверки» —

@@ -12,25 +12,39 @@
 ```php
 $container = Container::instance();
 
-$container->bind(Storage::class, LocalStorage::class);   // каждый раз новый объект
-$container->singleton(PriceList::class);                 // один на процесс
-$container->set(Clock::class, new FrozenClock());        // готовый объект (тесты)
+$container->bind(NoteLimiter::class, ConfigNoteLimiter::class);   // каждый раз новый объект
+$container->singleton(HttpClient::class);                         // один на процесс
+$container->set(HttpClient::class, new FakeHttpClient());         // готовый объект (тесты)
 $container->bind(HttpClient::class, static fn (Container $c): HttpClient => new HttpClient(30));
 ```
 
-Привязки приложения живут в `config/services.php` и подхватываются сами:
+Привязки приложения живут в `config/services.php` и подхватываются сами. Живой пример —
+`App\Contracts\NoteLimiter`: `NotesController::store()` просит его по интерфейсу, а
+какая проверка внутри (по настройке `notes.per_user`, по тарифу, всегда без
+ограничения) решает привязка, а не вызывающий код:
 
 ```php
+use App\Contracts\NoteLimiter;
+use App\Services\ConfigNoteLimiter;
+
 return [
     'bind' => [
-        App\Contracts\Storage::class => App\Services\LocalStorage::class,
+        NoteLimiter::class => ConfigNoteLimiter::class,
     ],
     'singleton' => [
-        App\Services\PriceList::class => static fn (Container $c) => new PriceList(
-            $c->make(Rsgrinko\Proton\Database\Connection::class)
-        ),
     ],
 ];
+```
+
+Замыкание в привязке нужно, когда объекту при сборке требуются настройки, а не
+только зависимости по типу:
+
+```php
+'singleton' => [
+    App\Services\ConfigNoteLimiter::class => static fn (Container $c) => new ConfigNoteLimiter(
+        $c->make(Rsgrinko\Proton\Database\Connection::class)
+    ),
+],
 ```
 
 Класс без привязки собирается **каждый раз заново**. Общими бывают только те, кого
@@ -61,7 +75,7 @@ $container->call([$report, 'build'], ['period' => 'месяц']);
 с типом-классом собирает контейнер:
 
 ```php
-public function index(Request $request, Scope $scope, PriceList $prices): Response
+public function index(Request $request, Scope $scope, NoteLimiter $limiter): Response
 ```
 
 Имена атрибутов важнее типов: `User $current` работать не будет, потому что
@@ -76,7 +90,7 @@ public function index(Request $request, Scope $scope, PriceList $prices): Respon
 ```php
 Container::setInstance(null);              // забыть всё, что настроили
 $container = new Container();
-$container->set(HttpClient::class, new FakeClient());
+$container->set(HttpClient::class, new FakeHttpClient());
 Container::setInstance($container);
 ```
 
