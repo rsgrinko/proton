@@ -10,7 +10,7 @@ declare(strict_types=1);
  * @var array{requests: int, average_ms: float, errors: int, slow: int, hours: int} $metrics
  * @var array<string, int|string> $storage
  * @var array<string, int> $queue
- * @var array<int, array{name: string, interval: int, at: string, last: string}> $schedule
+ * @var array<int, array{name: string, interval: int, at: string, cron: string, last: string}> $schedule
  * @var array<string, int> $events
  * @var array<string, string> $settings
  * @var array<int, string> $pending
@@ -124,7 +124,13 @@ $labels = [Diagnostics::OK => 'в порядке', Diagnostics::WARN => 'вни�
                     <?php foreach ($schedule as $task) { ?>
                         <tr>
                             <td class="mono small"><?= View::e($task['name']) ?></td>
-                            <td class="small"><?= View::e($task['at'] !== '' ? 'ежедневно в ' . $task['at'] : 'раз в ' . $task['interval'] . ' с') ?></td>
+                            <td class="small">
+                                <?php if ($task['cron'] !== '') { ?>
+                                    <span class="mono"><?= View::e($task['cron']) ?></span>
+                                <?php } else { ?>
+                                    <?= View::e($task['at'] !== '' ? 'ежедневно в ' . $task['at'] : 'раз в ' . $task['interval'] . ' с') ?>
+                                <?php } ?>
+                            </td>
                             <td class="muted small"><?= View::e($task['last'] === '' ? 'ни разу' : View::ago($task['last'])) ?></td>
                         </tr>
                     <?php } ?>

@@ -92,7 +92,7 @@ Cron не нужен: расписание ведёт тот же воркер. 
 
 ```php
 Scheduler::every(300, 'cache:cleanup', static fn () => Cache::cleanup());
-Scheduler::dailyAt('04:00', 'report', static fn () => (new DailyReport())->send());
+Scheduler::dailyAt('04:00', 'demo:heartbeat', static fn () => (new Logger('schedule'))->info('…'));
 ```
 
 У `every()` интервал считается от начала предыдущего запуска: задача каждые
@@ -100,11 +100,27 @@ Scheduler::dailyAt('04:00', 'report', static fn () => (new DailyReport())->send(
 переменной длины это не годится — прогон, который иногда занимает больше
 своего интервала, начинал бы следующий круг впритык к концу прошлого, без
 передышки. `everyAfterPrevious()` считает интервал от конца предыдущего
-запуска:
+запуска — так в `config/schedule.php` устроен необязательный пересчёт slug
+у заметок, который продолжает сам себя следующей задачей очереди:
 
 ```php
-Scheduler::everyAfterPrevious(60, 'reindex', static fn () => (new Reindex())->run());
+Scheduler::everyAfterPrevious(21600, 'notes:rebuild-slugs', static function (): void {
+    Queue::push(RebuildNoteSlugsJob::class, ['from' => 0]);
+});
 ```
+
+Когда время не сводится ни к «раз в сутки», ни к «раз в N секунд» — конкретные
+дни недели, рабочие часы, шаг внутри диапазона — `cron()` берёт пять полей,
+как в обычном cron (минута час день месяц день-недели, без имён вроде `MON`):
+
+```php
+Scheduler::cron('*/15 9-18 * * 1-5', 'demo:cron-heartbeat', static fn () => (new Logger('schedule'))->info('…'));
+```
+
+Задача по cron засчитывается не чаще раза в минуту, даже если `run()` зовут
+чаще. Негодное выражение (не пять полей, не число/`*`/список/диапазон/шаг)
+роняет регистрацию сразу, при загрузке `config/schedule.php`, а не молча
+не срабатывает потом.
 
 Задачи ядра объявляются до файла приложения: сейчас это ежедневная копия базы,
 если задано `BACKUP_SCHEDULE` (см. [BACKUP.md](BACKUP.md)). Задача приложения с тем же

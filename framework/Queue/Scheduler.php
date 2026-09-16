@@ -12,8 +12,10 @@ use Rsgrinko\Proton\Models\User;
 use Rsgrinko\Proton\Notifications\ApiKeyExpiringNotification;
 use Rsgrinko\Proton\Notifications\Notify;
 use Rsgrinko\Proton\Support\Config;
+use Rsgrinko\Proton\Support\CronExpression;
 use Rsgrinko\Proton\Support\Logger;
 use Rsgrinko\Proton\Support\Monitor;
+use Rsgrinko\Proton\Support\ProtonException;
 use Throwable;
 
 /**
@@ -35,6 +37,11 @@ use Throwable;
  * в начало следующего. everyAfterPrevious() считает интервал от конца
  * предыдущего запуска — следующий круг стартует не раньше, чем через
  * положенное время после того, как отработал прошлый.
+ *
+ * cron() — когда нужно не «раз в N секунд», а «по вторникам и пятницам
+ * в 9:00» или «каждые 15 минут с 9 до 18»: пять полей, как в обычном cron,
+ * без имён месяцев и дней недели (CronExpression). Задача засчитывается не
+ * чаще раза в минуту, даже если run() зовут чаще.
  */
 final class Scheduler
 {
@@ -44,7 +51,7 @@ final class Scheduler
     /** Интервал считается от конца предыдущего запуска — годится для длинных задач */
     private const MODE_FINISH = 'finish';
 
-    /** @var array<string, array{interval: int, at: string, mode: string, callback: callable}> */
+    /** @var array<string, array{interval: int, at: string, cron: string, mode: string, callback: callable}> */
     private static array $tasks = [];
 
     private static bool $booted = false;
@@ -54,7 +61,7 @@ final class Scheduler
      */
     public static function every(int $seconds, string $name, callable $callback): void
     {
-        self::register($name, max(1, $seconds), '', self::MODE_START, $callback);
+        self::register($name, max(1, $seconds), '', '', self::MODE_START, $callback);
     }
 
     /**
@@ -63,7 +70,7 @@ final class Scheduler
      */
     public static function everyAfterPrevious(int $seconds, string $name, callable $callback): void
     {
-        self::register($name, max(1, $seconds), '', self::MODE_FINISH, $callback);
+        self::register($name, max(1, $seconds), '', '', self::MODE_FINISH, $callback);
     }
 
     /**
@@ -71,12 +78,29 @@ final class Scheduler
      */
     public static function dailyAt(string $time, string $name, callable $callback): void
     {
-        self::register($name, 86400, $time, self::MODE_START, $callback);
+        self::register($name, 86400, $time, '', self::MODE_START, $callback);
     }
 
-    private static function register(string $name, int $interval, string $at, string $mode, callable $callback): void
+    /**
+     * Задача по cron-выражению — пять полей: минута час день месяц день-недели.
+     * Например: '0 3 * * *' — каждый день в 3:00, '*\/15 9-18 * * 1-5' — каждые
+     * 15 минут с 9 до 18 по будням.
+     */
+    public static function cron(string $expression, string $name, callable $callback): void
     {
-        self::$tasks[$name] = ['interval' => $interval, 'at' => $at, 'mode' => $mode, 'callback' => $callback];
+        if (!CronExpression::valid($expression)) {
+            throw new ProtonException(
+                'Негодное cron-выражение у задачи «' . $name . '»: «' . $expression . '» — нужно пять полей '
+                . '(минута час день месяц день-недели), числа, *, списки через запятую, диапазоны и шаг /n'
+            );
+        }
+
+        self::register($name, 0, '', $expression, self::MODE_START, $callback);
+    }
+
+    private static function register(string $name, int $interval, string $at, string $cron, string $mode, callable $callback): void
+    {
+        self::$tasks[$name] = ['interval' => $interval, 'at' => $at, 'cron' => $cron, 'mode' => $mode, 'callback' => $callback];
     }
 
     /**
@@ -165,7 +189,7 @@ final class Scheduler
     /**
      * Все объявленные задачи с временем последнего запуска — показывает состояние.
      *
-     * @return array<int, array{name: string, interval: int, at: string, last: string, fromFinish: bool}>
+     * @return array<int, array{name: string, interval: int, at: string, cron: string, last: string, fromFinish: bool}>
      */
     public static function tasks(): array
     {
@@ -180,6 +204,7 @@ final class Scheduler
                 'name'       => $name,
                 'interval'   => $task['interval'],
                 'at'         => $task['at'],
+                'cron'       => $task['cron'] ?? '',
                 'last'       => $last === 0 ? '' : date('Y-m-d H:i:s', $last),
                 'fromFinish' => ($task['mode'] ?? self::MODE_START) === self::MODE_FINISH,
             ];
@@ -205,6 +230,13 @@ final class Scheduler
     private static function due(string $name, array $task): bool
     {
         $last = (int) Setting::get(self::key($name), '0');
+
+        if (($task['cron'] ?? '') !== '') {
+            $now = time();
+
+            // Не чаще раза в минуту — run() может звать чаще, чем раз в 60 с
+            return $last < $now - ($now % 60) && CronExpression::matches($task['cron'], $now);
+        }
 
         if ($task['at'] === '') {
             return time() - $last >= $task['interval'];

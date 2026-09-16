@@ -120,6 +120,54 @@ test('расписание: задачу запускают кнопкой, не
     });
 });
 
+test('расписание: cron-задача засчитывается не чаще раза в минуту', function (): void {
+    withOwnDatabase(static function (): void {
+        Scheduler::reset();
+
+        // Выражение, которое совпадает ровно с текущей минутой — не зависит
+        // от времени суток, в которое гоняются тесты
+        $expression = date('i') . ' * * * *';
+
+        Scheduler::cron($expression, 'test:cron', static function (): void {});
+
+        $first = Scheduler::run();
+
+        assertTrue(in_array('test:cron', $first, true), 'задача выполнилась в свою минуту');
+
+        $second = Scheduler::run();
+
+        assertFalse(in_array('test:cron', $second, true), 'второй раз в ту же минуту — нет');
+
+        Scheduler::reset();
+    });
+});
+
+test('расписание: cron-задача с чужой минутой не выполняется', function (): void {
+    withOwnDatabase(static function (): void {
+        Scheduler::reset();
+
+        $otherMinute = ((int) date('i') + 30) % 60;
+
+        Scheduler::cron($otherMinute . ' * * * *', 'test:cron-other', static function (): void {});
+
+        assertFalse(in_array('test:cron-other', Scheduler::run(), true));
+
+        Scheduler::reset();
+    });
+});
+
+test('расписание: негодное cron-выражение не регистрируется молча', function (): void {
+    Scheduler::reset();
+
+    $error = assertThrows(static function (): void {
+        Scheduler::cron('пора уже', 'test:bad-cron', static function (): void {});
+    });
+
+    assertContains('test:bad-cron', $error->getMessage());
+
+    Scheduler::reset();
+});
+
 test('входящие вебхуки: без токена не принимаем, с токеном — принимаем', function (): void {
     withOwnDatabase(static function (): void {
         Incoming::reset();
