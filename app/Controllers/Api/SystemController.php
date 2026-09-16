@@ -56,34 +56,90 @@ final class SystemController extends ApiController
 
     /**
      * Здоровье сервиса — его дёргает мониторинг, поэтому ключ здесь не нужен.
-     * Наружу отдаём только то, что не жалко: живость базы и размер очереди.
+     * Наружу отдаём только то, что не жалко: по каждой зависимости — свой
+     * статус отдельным полем, а не одно общее «зелёный/красный». Мониторинг,
+     * которому важно только «жив/не жив», смотрит на верхний `status`; кому
+     * нужна причина — читает `checks`.
      */
     public function health(): Response
     {
-        $database = 'ok';
+        $checks = [
+            'database' => $this->healthDatabase(),
+            'disk'     => $this->healthDisk(),
+            'queue'    => $this->healthQueue(),
+        ];
+
+        $status = 'ok';
+
+        foreach ($checks as $check) {
+            if ($check['status'] === 'fail') {
+                $status = 'fail';
+
+                break;
+            }
+
+            if ($check['status'] === 'warn') {
+                $status = 'warn';
+            }
+        }
+
+        return Response::json([
+            'status' => $status,
+            'app'    => (string) Config::get('app.name', 'Proton'),
+            'checks' => $checks,
+            'time'   => date('c'),
+        ], $status === 'fail' ? 503 : 200);
+    }
+
+    /**
+     * @return array{status: string, ms?: float}
+     */
+    private function healthDatabase(): array
+    {
+        $startedAt = microtime(true);
 
         try {
             Connection::instance()->value('SELECT 1');
-        } catch (Throwable $e) {
-            $database = 'fail';
-        }
 
-        $queue = [];
-
-        try {
-            $queue = Queue::stats();
+            return ['status' => 'ok', 'ms' => round((microtime(true) - $startedAt) * 1000, 1)];
         } catch (Throwable) {
-            $database = 'fail';
+            return ['status' => 'fail'];
         }
+    }
 
-        $healthy = $database === 'ok';
+    /**
+     * Тот же порог, что у присмотра (MONITOR_FREE_BYTES): здоровье и мониторинг
+     * не должны спорить о том, что считать «мало места».
+     *
+     * @return array{status: string, free_mb: int}
+     */
+    private function healthDisk(): array
+    {
+        $free  = (int) (Metrics::storage()['free_bytes'] ?? 0);
+        $limit = (int) Config::get('monitor.free_bytes', 500 * 1024 * 1024);
 
-        return Response::json([
-            'status'   => $healthy ? 'ok' : 'fail',
-            'app'      => (string) Config::get('app.name', 'Proton'),
-            'database' => $database,
-            'queue'    => $queue,
-            'time'     => date('c'),
-        ], $healthy ? 200 : 503);
+        return [
+            'status'  => $free >= $limit ? 'ok' : 'warn',
+            'free_mb' => (int) round($free / 1024 / 1024),
+        ];
+    }
+
+    /**
+     * @return array{status: string, queued?: int, failed?: int}
+     */
+    private function healthQueue(): array
+    {
+        try {
+            $stats  = Queue::stats();
+            $failed = (int) ($stats[Queue::FAILED] ?? 0) + (int) ($stats[Queue::DEAD] ?? 0);
+
+            return [
+                'status' => $failed === 0 ? 'ok' : 'warn',
+                'queued' => (int) ($stats[Queue::QUEUED] ?? 0),
+                'failed' => $failed,
+            ];
+        } catch (Throwable) {
+            return ['status' => 'fail'];
+        }
     }
 }

@@ -571,11 +571,18 @@ test('api: показатели отдаются по ключу и только
     ]));
 });
 
-test('api: здоровье отвечает без ключа', function (): void {
+test('api: здоровье отвечает без ключа и разбито по зависимостям', function (): void {
     $response = httpRequest('GET', '/api/v1/health');
 
     assertStatus(200, $response);
     assertContains('"status": "ok"', $response->body());
+
+    $payload = json_decode($response->body(), true);
+
+    assertSame('ok', $payload['checks']['database']['status'] ?? '');
+    assertTrue(($payload['checks']['database']['ms'] ?? -1) >= 0, 'время ответа базы посчитано');
+    assertTrue(isset($payload['checks']['disk']['status']), 'диск проверяется отдельно');
+    assertTrue(isset($payload['checks']['queue']['status']), 'очередь проверяется отдельно');
 });
 
 test('api: ошибки приходят в едином формате', function (): void {

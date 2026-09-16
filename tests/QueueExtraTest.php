@@ -48,6 +48,22 @@ test('очередь: пауза перед повтором разная у с�
     }
 });
 
+test('здоровье: мёртвая задача переводит очередь в warn, а не в fail', function (): void {
+    withOwnDatabase(static function (): void {
+        $id = Queue::push(QueueTestJob::class);
+
+        Connection::instance()->update('jobs', ['status' => Queue::DEAD], ['id' => $id]);
+
+        $body = (string) (new App\Controllers\Api\SystemController())->health()->body();
+        $data = json_decode($body, true);
+
+        assertSame('warn', $data['checks']['queue']['status'], 'мёртвая задача — повод присмотреться, не авария');
+        assertSame(1, $data['checks']['queue']['failed']);
+        assertSame('warn', $data['status'], 'худшая из проверок поднимается наверх');
+        assertSame('ok', $data['checks']['database']['status'], 'база рядом не пострадала');
+    });
+});
+
 test('очередь: мёртвую задачу возвращают в работу из панели', function (): void {
     withOwnDatabase(static function (): void {
         /** @var User $admin */
