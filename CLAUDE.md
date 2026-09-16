@@ -236,6 +236,13 @@ SQL; у каждой миграции честный `down()`. Накат идё
 встречается в запросе один раз — MySQL работает без эмуляции подготовленных выражений и
 повтор имени не принимает.
 
+**Модель объявляет свои события сама**: `save()`, `delete()`, `restore()` зовут
+`Events::fire('model.saving', ['model' => $this])` и соседей (`creating`, `updating`,
+`deleting`, `restoring` — до, могут отменить операцию через `false`; `created`,
+`updated`, `saved`, `deleted`, `restored` — после, просто уведомление). Событие одно на
+все модели, слушатель узнаёт свою по `$payload['model'] instanceof …`. Подробности —
+`docs/DATABASE.md`.
+
 ## 6. Соглашения по коду
 
 - Классы — `PascalCase`, методы и свойства — `camelCase`, константы — `UPPER_SNAKE`.

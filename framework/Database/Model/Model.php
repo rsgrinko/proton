@@ -11,6 +11,7 @@ use Rsgrinko\Proton\Database\Model\Relations\BelongsToMany;
 use Rsgrinko\Proton\Database\Model\Relations\HasMany;
 use Rsgrinko\Proton\Database\Model\Relations\HasOne;
 use Rsgrinko\Proton\Database\Model\Relations\Relation;
+use Rsgrinko\Proton\Events\Events;
 use Rsgrinko\Proton\Support\ProtonException;
 use Rsgrinko\Proton\Support\Str;
 
@@ -321,6 +322,10 @@ abstract class Model implements JsonSerializable
                 return true;
             }
 
+            if ($this->before('saving') || $this->before('updating', ['changes' => $changes])) {
+                return false;
+            }
+
             if ($this->timestamps && $this->hasColumn(self::UPDATED_AT)) {
                 $changes[self::UPDATED_AT] = $this->attributes[self::UPDATED_AT] = $now;
             }
@@ -329,7 +334,14 @@ abstract class Model implements JsonSerializable
 
             $this->original = $this->attributes;
 
+            $this->after('updated');
+            $this->after('saved');
+
             return true;
+        }
+
+        if ($this->before('saving') || $this->before('creating')) {
+            return false;
         }
 
         if ($this->timestamps) {
@@ -348,6 +360,9 @@ abstract class Model implements JsonSerializable
 
         $this->original = $this->attributes;
         $this->exists   = true;
+
+        $this->after('created');
+        $this->after('saved');
 
         return true;
     }
@@ -371,6 +386,10 @@ abstract class Model implements JsonSerializable
             return false;
         }
 
+        if ($this->before('deleting')) {
+            return false;
+        }
+
         if ($this->softDelete) {
             $this->attributes[self::DELETED_AT] = date('Y-m-d H:i:s');
 
@@ -380,12 +399,16 @@ abstract class Model implements JsonSerializable
                 [static::$primaryKey => $this->key()]
             );
 
+            $this->after('deleted');
+
             return true;
         }
 
         $this->connection()->delete($this->table(), [static::$primaryKey => $this->key()]);
 
         $this->exists = false;
+
+        $this->after('deleted');
 
         return true;
     }
@@ -399,9 +422,15 @@ abstract class Model implements JsonSerializable
             return false;
         }
 
+        if ($this->before('deleting', ['force' => true])) {
+            return false;
+        }
+
         $this->connection()->delete($this->table(), [static::$primaryKey => $this->key()]);
 
         $this->exists = false;
+
+        $this->after('deleted', ['force' => true]);
 
         return true;
     }
@@ -415,6 +444,10 @@ abstract class Model implements JsonSerializable
             return false;
         }
 
+        if ($this->before('restoring')) {
+            return false;
+        }
+
         $this->attributes[self::DELETED_AT] = null;
 
         $this->connection()->update(
@@ -422,6 +455,8 @@ abstract class Model implements JsonSerializable
             [self::DELETED_AT => null],
             [static::$primaryKey => $this->key()]
         );
+
+        $this->after('restored');
 
         return true;
     }
@@ -716,6 +751,31 @@ abstract class Model implements JsonSerializable
         }
 
         return $values;
+    }
+
+    /**
+     * Событие "до": model.saving, model.creating, model.updating, model.deleting,
+     * model.restoring. Слушатель узнаёт модель по `$payload['model'] instanceof …`
+     * и может отменить операцию, вернув false, — как `mail.sending` у почты.
+     *
+     * @param array<string, mixed> $extra
+     */
+    private function before(string $event, array $extra = []): bool
+    {
+        $results = Events::fire('model.' . $event, ['model' => $this] + $extra);
+
+        return in_array(false, $results, true);
+    }
+
+    /**
+     * Событие "после": model.created, model.updated, model.saved, model.deleted,
+     * model.restored. Отменить уже нельзя — запись изменилась.
+     *
+     * @param array<string, mixed> $extra
+     */
+    private function after(string $event, array $extra = []): void
+    {
+        Events::fire('model.' . $event, ['model' => $this] + $extra);
     }
 
     /**

@@ -150,6 +150,40 @@ foreach (Note::query()->with('author')->get() as $note) {
 из обычных выборок. Достать её можно `withTrashed()` или `onlyTrashed()`, вернуть —
 `restore()`, убрать насовсем — `forceDelete()`.
 
+### События модели
+
+`save()`, `delete()`, `forceDelete()` и `restore()` сами объявляют, что происходит, —
+через ту же шину `Events`, что и всё остальное (`mail.sending`, `webhook.*`). Слушатель
+узнаёт модель через `$payload['model']`, а не по имени события — событие одно на все
+модели:
+
+```php
+use Rsgrinko\Proton\Events\Events;
+
+Events::listen('model.saving', function (array $payload): void {
+    if (!$payload['model'] instanceof \App\Models\Note) {
+        return;
+    }
+    // …
+});
+```
+
+«До» — `model.saving`, `model.creating`, `model.updating`, `model.deleting`,
+`model.restoring`: слушатель может отменить операцию, вернув `false` — как отмена
+письма через `mail.sending`. `model.updating` летит с ключом `changes` (что уйдёт
+в `UPDATE`), `model.deleting`/`model.deleted` при `forceDelete()` — с `force => true`.
+
+«После» — `model.created`, `model.updated`, `model.saved`, `model.deleted`,
+`model.restored`: запись уже изменилась, отменять нечего, это просто уведомление.
+
+`model.saving` летит и при создании, и при изменении — раньше своего `model.creating`
+или `model.updating`. Если сохранять нечего (`save()` без изменений полей), ни одно
+событие не звучит: это не действие, а нет-оп.
+
+Хук — не замена `Policy` и не место для бизнес-правил, которые должны быть видны
+в контроллере: он для сквозных вещей вроде сброса кэша или лога, которым всё равно,
+через какой контроллер модель сохранили.
+
 ## Область видимости
 
 `Scope` решает, чьи записи видно, и уезжает прямо в запрос — так фильтр нельзя забыть:
