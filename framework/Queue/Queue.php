@@ -31,6 +31,9 @@ final class Queue
     /** Задача исчерпала попытки: лежит и ждёт, когда разберутся */
     public const DEAD    = 'dead';
 
+    /** Служебный ключ payload — остаток цепочки, см. chain() */
+    private const CHAIN_KEY = '__chain';
+
     /**
      * Ставит задачу в очередь. Возвращает её номер.
      *
@@ -64,6 +67,68 @@ final class Queue
             'created_at'   => Connection::now(),
             'updated_at'   => Connection::now(),
         ]);
+    }
+
+    /**
+     * Цепочка задач: следующий шаг встаёт в очередь только после того, как
+     * предыдущий закончится успехом — упавшая насовсем задача останавливает
+     * цепочку сама, без единой лишней строки в вызывающем коде.
+     *
+     * @param array<int, class-string<Job>|array{0: class-string<Job>, 1?: array<string, mixed>}> $steps
+     */
+    public static function chain(array $steps, int $delaySeconds = 0, ?string $queue = null, ?int $priority = null): int
+    {
+        if ($steps === []) {
+            throw new ProtonException('Цепочка не может быть пустой');
+        }
+
+        [$class, $payload] = self::normalizeStep(array_shift($steps));
+
+        if ($steps !== []) {
+            $payload[self::CHAIN_KEY] = array_map(self::normalizeStep(...), $steps);
+        }
+
+        return self::push($class, $payload, $delaySeconds, $queue, $priority);
+    }
+
+    /**
+     * Ставит следующий шаг цепочки, если он есть — зовёт воркер сразу после
+     * успеха. Данные, отданные через $job->carryToNext(), перебивают то, что
+     * лежало в шаге заранее: свежее важнее статичного.
+     *
+     * @param array<string, mixed> $payload
+     */
+    public static function continueChain(array $payload, Job $job): void
+    {
+        $chain = $payload[self::CHAIN_KEY] ?? null;
+
+        if (!is_array($chain) || $chain === []) {
+            return;
+        }
+
+        [$class, $stepPayload] = self::normalizeStep(array_shift($chain));
+
+        $stepPayload = array_merge($stepPayload, $job->forwarded());
+
+        if ($chain !== []) {
+            $stepPayload[self::CHAIN_KEY] = $chain;
+        }
+
+        self::push($class, $stepPayload);
+    }
+
+    /**
+     * @param class-string<Job>|array{0: class-string<Job>, 1?: array<string, mixed>} $step
+     *
+     * @return array{0: class-string<Job>, 1: array<string, mixed>}
+     */
+    private static function normalizeStep(string|array $step): array
+    {
+        if (is_string($step)) {
+            return [$step, []];
+        }
+
+        return [(string) $step[0], (array) ($step[1] ?? [])];
     }
 
     /**

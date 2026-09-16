@@ -19,9 +19,23 @@ namespace Rsgrinko\Proton\Queue;
  *
  * Задача обязана переживать повтор: воркер может выполнить её второй раз, если
  * процесс упал между работой и отметкой об успехе.
+ *
+ * Цепочка (`Queue::chain()`) ставит следующий шаг только после успеха
+ * предыдущего — упавшая насовсем задача останавливает её сама. Данные,
+ * которые появились только во время работы (сгенерированное имя файла и
+ * подобное), следующий шаг получает через `carryToNext()`, а не через
+ * payload — заранее их не бывает:
+ *
+ *     Queue::chain([
+ *         [ExportJob::class, ['kind' => 'users', 'user_id' => 5]],
+ *         [NotifyExportReadyJob::class],
+ *     ]);
  */
 abstract class Job
 {
+    /** @var array<string, mixed> Данные для следующего шага цепочки (Queue::chain()) */
+    private array $carry = [];
+
     /**
      * Сколько раз пробовать, прежде чем признать задачу неудавшейся.
      */
@@ -67,6 +81,29 @@ abstract class Job
      * @param array<string, mixed> $payload
      */
     abstract public function handle(array $payload): void;
+
+    /**
+     * Передать данные следующему шагу цепочки (Queue::chain()) — тому, что
+     * появилось только сейчас и заранее в очереди лежать не могло: сгенерированное
+     * имя файла, id только что созданной записи. Не имеет смысла вне цепочки —
+     * если следующего шага нет, значение просто некому будет прочитать.
+     *
+     * @param array<string, mixed> $data
+     */
+    protected function carryToNext(array $data): void
+    {
+        $this->carry = $data;
+    }
+
+    /**
+     * Что задача передала следующему шагу — читает воркер после handle().
+     *
+     * @return array<string, mixed>
+     */
+    public function forwarded(): array
+    {
+        return $this->carry;
+    }
 
     /**
      * Задача исчерпала попытки. Здесь уместно сообщить о поломке.

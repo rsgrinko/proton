@@ -6,12 +6,12 @@ namespace Rsgrinko\Proton\Support;
 
 use Rsgrinko\Proton\Access\Viewer;
 use Rsgrinko\Proton\Models\User;
-use Rsgrinko\Proton\Notifications\ExportReadyNotification;
-use Rsgrinko\Proton\Notifications\Notify;
 use Rsgrinko\Proton\Queue\Job;
 
 /**
- * Готовит большую выгрузку в фоне и зовёт человека, когда файл готов.
+ * Готовит большую выгрузку в фоне — первый шаг цепочки, второй (письмо
+ * заказчику) забирает NotifyExportReadyJob, см. Queue::chain() в
+ * Controller::exportCsv().
  *
  * Запрос задаче не передашь — в очереди лежит JSON. Поэтому передаются имя
  * выгрузки из реестра (`Exports`) и параметры отбора, а запрос собирается
@@ -59,6 +59,13 @@ final class ExportJob extends Job
 
         Audit::action('export', 0, 'подготовлена выгрузка «' . $kind['label'] . '»: ' . $name);
 
-        Notify::send($user, new ExportReadyNotification($kind['label'], $name, ExportFile::rowCount($content)));
+        // Имя файла и число строк известны только теперь — второй шаг цепочки
+        // получит их через carryToNext(), а не заранее в payload
+        $this->carryToNext([
+            'user_id' => $userId,
+            'label'   => $kind['label'],
+            'name'    => $name,
+            'rows'    => ExportFile::rowCount($content),
+        ]);
     }
 }

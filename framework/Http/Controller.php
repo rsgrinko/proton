@@ -17,6 +17,7 @@ use Rsgrinko\Proton\Support\ExportJob;
 use Rsgrinko\Proton\Support\Exports;
 use Rsgrinko\Proton\Support\Filter;
 use Rsgrinko\Proton\Support\Filters;
+use Rsgrinko\Proton\Support\NotifyExportReadyJob;
 use Rsgrinko\Proton\Support\Validator;
 use Rsgrinko\Proton\View\View;
 
@@ -159,10 +160,15 @@ abstract class Controller
             // Большую выборку отдаёт очередь: файл соберётся в фоне, а человек
             // получит ссылку уведомлением
             if ($request !== null && Exports::get($name) !== null) {
-                Queue::push(ExportJob::class, [
-                    'kind'    => $name,
-                    'params'  => $request->query,
-                    'user_id' => (int) $request->attribute('user')?->id(),
+                // Второй шаг встанет в очередь сам, когда первый соберёт файл —
+                // имени файла и числа строк заранее ещё не существует
+                Queue::chain([
+                    [ExportJob::class, [
+                        'kind'    => $name,
+                        'params'  => $request->query,
+                        'user_id' => (int) $request->attribute('user')?->id(),
+                    ]],
+                    [NotifyExportReadyJob::class],
                 ]);
 
                 Audit::action($entity !== '' ? $entity : $name, 0, 'заказана фоновая выгрузка: ' . $name);

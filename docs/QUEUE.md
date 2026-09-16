@@ -11,19 +11,19 @@
 ```php
 use Rsgrinko\Proton\Queue\Queue;
 
-Queue::push(RebuildNoteSlugsJob::class, ['from' => 0]);          // сейчас
-Queue::push(RebuildNoteSlugsJob::class, ['from' => 0], 60);      // через минуту
-Queue::push(ReportJob::class, ['month' => '2026-09'], 0, 'heavy'); // в очередь heavy
+Queue::push(RebuildNoteSlugsJob::class, ['from' => 0]);              // сейчас
+Queue::push(RebuildNoteSlugsJob::class, ['from' => 0], 60);          // через минуту
+Queue::push(DeliverWebhookJob::class, ['delivery_id' => 5], 0, 'webhooks'); // в очередь webhooks
 ```
 
 Задача — класс в `app/Jobs`, наследник `Job`. Обязателен только `handle()`:
 
 ```php
-final class ReportJob extends Job
+final class DeliverWebhookJob extends Job
 {
-    public function attempts(): int { return 3; }          // сколько раз пробовать
+    public function attempts(): int { return 5; }           // сколько раз пробовать
     public function backoff(int $attempt): int { return $attempt * 60; } // пауза перед повтором
-    public function queue(): string { return 'heavy'; }    // своя очередь по умолчанию
+    public function queue(): string { return 'webhooks'; }  // своя очередь по умолчанию — чужой сервер не должен задерживать письма
 
     public function handle(array $payload): void
     {
@@ -46,6 +46,41 @@ final class ReportJob extends Job
 Задача, которая не помещается в один заход, ставит себе продолжение сама —
 так `RebuildNoteSlugsJob` обходит таблицу порциями, не занимая воркер часами и
 переживая перезапуск.
+
+### Цепочка
+
+Когда шаг Б должен случиться только после успеха шага А — `Queue::chain()`.
+Так фоновая выгрузка большого списка (`Controller::exportCsv()`) сначала
+собирает файл, потом отдельной задачей шлёт уведомление со ссылкой:
+
+```php
+Queue::chain([
+    [ExportJob::class, ['kind' => 'users', 'params' => $request->query, 'user_id' => $user->id()]],
+    [NotifyExportReadyJob::class],
+]);
+```
+
+Следующий шаг встаёт в очередь только после того, как предыдущий закончится
+успехом — упавшая насовсем задача останавливает цепочку сама, без единой
+проверки в вызывающем коде. Шагу, которому нужны данные, появившиеся только
+во время работы предыдущего (как имя только что сгенерированного файла),
+их неоткуда взять заранее — такой шаг отдаёт их через `carryToNext()`:
+
+```php
+final class ExportJob extends Job
+{
+    public function handle(array $payload): void
+    {
+        $name = ExportFile::save(...);
+
+        $this->carryToNext(['name' => $name]);   // следующий шаг получит это в payload
+    }
+}
+```
+
+Данные из `carryToNext()` перебивают то, что лежало в шаге заранее (если
+что-то лежало) — свежее важнее статичного. Шаг без данных для передачи
+`carryToNext()` может не звать вовсе.
 
 ### Воркер
 

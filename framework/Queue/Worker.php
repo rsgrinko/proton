@@ -186,6 +186,7 @@ final class Worker
             $profile = $this->profile($startedAt);
 
             Queue::complete((int) $row['id'], $profile);
+            Queue::continueChain($payload, $job);
 
             $this->logger->info('Задача выполнена', [
                 'id'      => (int) $row['id'],
