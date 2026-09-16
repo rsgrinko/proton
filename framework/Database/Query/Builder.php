@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Rsgrinko\Proton\Database\Query;
 
 use Closure;
+use Rsgrinko\Proton\Cache\Cache;
 use Rsgrinko\Proton\Database\Connection;
 use Rsgrinko\Proton\Database\DatabaseException;
 
@@ -58,6 +59,12 @@ class Builder
 
     /** Счётчик имён параметров */
     protected int $counter = 0;
+
+    /** На сколько секунд запомнить результат; null — не кэшировать (по умолчанию) */
+    protected ?int $rememberSeconds = null;
+
+    /** Свой ключ кэша — без него ключ считается от текста запроса и параметров */
+    protected ?string $rememberKey = null;
 
     public function __construct(Connection $db, string $table)
     {
@@ -329,13 +336,41 @@ class Builder
     }
 
     /**
+     * Не бить в базу заново, если результат уже есть в кэше (`Support\Cache`):
+     * справочники и тяжёлые сводки незачем считать на каждый показ страницы.
+     *
+     *     $roles = Role::query()->remember(300)->get();
+     *
+     * Без своего `$key` ключ считается от текста запроса и его параметров —
+     * поэтому один и тот же вызов с разными where() не путается сам с собой.
+     * Свой ключ имеет смысл, когда его потом сбрасывают явно: `Cache::forget()`
+     * после изменения данных, из которых результат считался.
+     *
+     * Кэшируются только `get()`, `count()`, `sum()`, `max()` — и то, что вызывает
+     * их внутри (`first()`, `value()`, `pluck()`, `exists()`). Подгрузка связей
+     * через `with()` идёт отдельными запросами и под эту кэш не попадает.
+     *
+     * В самом кэше ключ лежит с суффиксом метода — `query:<key>:get`,
+     * `query:<key>:count:колонка` и т.д., иначе `get()` и `count()` одного
+     * запроса стали бы одной записью в кэше. Сбрасывая свой ключ вручную,
+     * суффикс нужно дописать тем же способом.
+     */
+    public function remember(int $seconds, ?string $key = null): static
+    {
+        $this->rememberSeconds = $seconds;
+        $this->rememberKey     = $key;
+
+        return $this;
+    }
+
+    /**
      * Строки запроса.
      *
      * @return array<int, array<string, mixed>>
      */
     public function get(): array
     {
-        return $this->db->select($this->toSql(), $this->bindings);
+        return $this->cached('get', fn (): array => $this->db->select($this->toSql(), $this->bindings));
     }
 
     /**
@@ -406,10 +441,9 @@ class Builder
 
         $query->orders = [];
 
-        return (int) $query->db->value(
-            $query->select('COUNT(' . ($column === '*' ? '*' : $this->name($column)) . ') AS aggregate')->toSql(),
-            $query->bindings
-        );
+        $sql = $query->select('COUNT(' . ($column === '*' ? '*' : $this->name($column)) . ') AS aggregate')->toSql();
+
+        return (int) $this->cached('count:' . $column, fn (): mixed => $query->db->value($sql, $query->bindings));
     }
 
     public function sum(string $column): float
@@ -418,10 +452,9 @@ class Builder
 
         $query->orders = [];
 
-        return (float) $query->db->value(
-            $query->select('SUM(' . $this->name($column) . ') AS aggregate')->toSql(),
-            $query->bindings
-        );
+        $sql = $query->select('SUM(' . $this->name($column) . ') AS aggregate')->toSql();
+
+        return (float) $this->cached('sum:' . $column, fn (): mixed => $query->db->value($sql, $query->bindings));
     }
 
     public function max(string $column): mixed
@@ -430,10 +463,9 @@ class Builder
 
         $query->orders = [];
 
-        return $query->db->value(
-            $query->select('MAX(' . $this->name($column) . ') AS aggregate')->toSql(),
-            $query->bindings
-        );
+        $sql = $query->select('MAX(' . $this->name($column) . ') AS aggregate')->toSql();
+
+        return $this->cached('max:' . $column, fn (): mixed => $query->db->value($sql, $query->bindings));
     }
 
     public function exists(): bool
@@ -637,6 +669,37 @@ class Builder
         ];
 
         return $this;
+    }
+
+    /**
+     * Без remember() — просто зовёт $factory. С ним — заглядывает в кэш сперва.
+     *
+     * @template T
+     *
+     * @param callable(): T $factory
+     *
+     * @return T
+     */
+    private function cached(string $suffix, callable $factory): mixed
+    {
+        if ($this->rememberSeconds === null) {
+            return $factory();
+        }
+
+        return Cache::remember($this->cacheKey() . ':' . $suffix, $this->rememberSeconds, $factory);
+    }
+
+    /**
+     * Свой ключ или ключ от текста запроса — считается по $this в его текущем
+     * состоянии, поэтому вызывать до клонирования и правки where()/select().
+     */
+    private function cacheKey(): string
+    {
+        if ($this->rememberKey !== null) {
+            return 'query:' . $this->rememberKey;
+        }
+
+        return 'query:' . md5($this->toSql() . serialize($this->bindings));
     }
 
     /**
