@@ -35,14 +35,26 @@ function runMakeCrud(array $args, array $options): array
 
 /**
  * Убирает всё, что команда создала, — генератор пишет в настоящие каталоги
- * приложения, а не в песочницу.
+ * приложения, а не в песочницу. Каталог вьюх (resources/views/{раздел}/)
+ * генератор заводит сам — за собой его тоже нужно убрать, иначе после каждого
+ * прогона тестов остаются пустые zz_crud_* папки.
  *
  * @param array<int, string> $created
  */
 function cleanupCrud(array $created): void
 {
+    $dirs = [];
+
     foreach ($created as $relative) {
-        @unlink(APP_ROOT . '/' . $relative);
+        $path = APP_ROOT . '/' . $relative;
+
+        @unlink($path);
+
+        $dirs[dirname($path)] = true;
+    }
+
+    foreach (array_keys($dirs) as $dir) {
+        @rmdir($dir);
     }
 }
 
