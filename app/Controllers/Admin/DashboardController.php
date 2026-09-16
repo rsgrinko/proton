@@ -4,38 +4,30 @@ declare(strict_types=1);
 
 namespace App\Controllers\Admin;
 
-use App\Models\Note;
-use Rsgrinko\Proton\Cache\Cache;
+use Rsgrinko\Proton\Access\Viewer;
 use Rsgrinko\Proton\Http\Controller;
 use Rsgrinko\Proton\Http\Response;
 use Rsgrinko\Proton\Models\AuditEntry;
-use Rsgrinko\Proton\Models\User;
-use Rsgrinko\Proton\Queue\Queue;
-use Rsgrinko\Proton\Support\Diagnostics;
+use Rsgrinko\Proton\Support\Widgets;
 
 /**
- * Обзор: несколько цифр и последние действия.
+ * Обзор: карточки под право смотрящего и последние действия.
+ *
+ * Какие карточки видны — решает реестр Widgets, а не эта страница: свой
+ * раздел добавляет свою карточку в config/widgets.php, ничего не трогая здесь.
  */
 final class DashboardController extends Controller
 {
-    public function index(): Response
+    public function index(Viewer $viewer): Response
     {
-        // Сводку считаем не на каждое обновление страницы: цифры здесь
-        // не про секундную точность
-        $stats = Cache::remember('admin:dashboard', 30, static fn (): array => [
-            'users'  => User::query()->count(),
-            'active' => User::query()->where('active', 1)->count(),
-            'notes'  => Note::query()->count(),
-            'queue'  => Queue::stats(),
-        ]);
-
-        $checks = Diagnostics::run();
+        $canSeeAudit = $viewer->can('audit.view');
 
         return $this->view('admin/dashboard', [
-            'active' => 'dashboard',
-            'stats'  => $stats,
-            'health' => Diagnostics::worst($checks),
-            'events' => AuditEntry::query()->orderBy('id', 'desc')->limit(10)->get(),
+            'active'  => 'dashboard',
+            'widgets' => Widgets::for($viewer),
+            // Журнал — тоже право: без audit.view человеку тут нечего смотреть
+            'events'  => $canSeeAudit ? AuditEntry::query()->orderBy('id', 'desc')->limit(10)->get() : [],
+            'canSeeAudit' => $canSeeAudit,
         ], 'Панель');
     }
 }
