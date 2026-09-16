@@ -58,8 +58,8 @@ use Rsgrinko\Proton\View\View;
                         <td><a href="<?= View::e(View::route('admin.users.show', ['id' => $user->id()])) ?>"><?= View::e((string) $user->login) ?></a></td>
                         <td class="hide-sm"><?= View::e((string) $user->name) ?></td>
                         <td class="hide-sm muted small"><?= View::e((string) $user->email) ?></td>
-                        <td><?= View::e($roles[(int) $user->raw('role_id')] ?? '—') ?></td>
-                        <td>
+                        <td data-label="Роль"><?= View::e($roles[(int) $user->raw('role_id')] ?? '—') ?></td>
+                        <td data-label="Активен">
                             <?php if ($user->isActive()) { ?>
                                 <span class="badge ok">да</span>
                             <?php } else { ?>
