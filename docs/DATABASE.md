@@ -212,6 +212,44 @@ Events::listen('model.saving', function (array $payload): void {
 в контроллере: он для сквозных вещей вроде сброса кэша или лога, которым всё равно,
 через какой контроллер модель сохранили.
 
+### Наблюдатели
+
+Одна проверка `instanceof` в слушателе на шине — нормально, но когда у второй,
+третьей модели появляется своя логика на события, слушатель распухает в портянку
+`if`. Наблюдатель — методы жизненного цикла одной модели в одном классе:
+
+```php
+namespace App\Observers;
+
+use App\Models\Note;
+use Rsgrinko\Proton\Database\Model\Model;
+use Rsgrinko\Proton\Files\Attachment;
+
+final class NoteObserver
+{
+    public function deleted(Model $model, bool $force = false): void
+    {
+        if ($force && $model instanceof Note) {
+            Attachment::detachAll('note', $model->id());   // без этого файлы вложений остаются висеть
+        }
+    }
+}
+```
+
+```php
+// config/observers.php
+Observers::register(Note::class, NoteObserver::class);
+```
+
+Имена методов те же, что у событий: `saving`, `creating`, `updating`, `created`,
+`updated`, `saved`, `deleting`, `deleted`, `restoring`, `restored`. Метода нет —
+событие не обрабатывается, заглушки не нужны. «До»-методы отменяют операцию так же,
+как слушатель — вернуть `false`. `updating` получает вторым аргументом `changes`,
+`deleting`/`deleted` — `force` (при `forceDelete()`), остальные — только модель.
+
+Шина `Events::listen('model.*', ...)` при этом никуда не девается — оба способа
+получают одно и то же событие, наблюдатель просто удобнее, когда моделей больше одной.
+
 ## Область видимости
 
 `Scope` решает, чьи записи видно, и уезжает прямо в запрос — так фильтр нельзя забыть:

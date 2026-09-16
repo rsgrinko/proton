@@ -764,6 +764,12 @@ abstract class Model implements JsonSerializable
     {
         $results = Events::fire('model.' . $event, ['model' => $this] + $extra);
 
+        $observer = Observers::for(static::class);
+
+        if ($observer !== null && method_exists($observer, $event)) {
+            $results[] = $observer->{$event}($this, ...array_values($extra));
+        }
+
         return in_array(false, $results, true);
     }
 
@@ -776,6 +782,12 @@ abstract class Model implements JsonSerializable
     private function after(string $event, array $extra = []): void
     {
         Events::fire('model.' . $event, ['model' => $this] + $extra);
+
+        $observer = Observers::for(static::class);
+
+        if ($observer !== null && method_exists($observer, $event)) {
+            $observer->{$event}($this, ...array_values($extra));
+        }
     }
 
     /**

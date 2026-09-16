@@ -83,6 +83,33 @@ test('вложения: удаление убирает и запись, и фа
     });
 });
 
+test('наблюдатель: forceDelete заметки уносит с собой вложения', function (): void {
+    withOwnDatabase(static function (): void {
+        /** @var User $owner */
+        $owner = Factory::of(User::class)->create();
+        /** @var Note $note */
+        $note = Factory::of(Note::class)->create(['user_id' => $owner->id()]);
+
+        $attachment = Attachment::attach(fakeUpload('к_заметке.txt'), 'note', $note->id());
+        $path       = (string) $attachment->raw('path');
+
+        assertTrue(Storage::exists($path));
+
+        // Мягкое удаление вложения не трогает: заметка может вернуться из корзины
+        $note->delete();
+
+        assertTrue(Storage::exists($path), 'мягкое удаление файл не трогает');
+        assertSame(1, Attachment::query()->count());
+
+        // А вот насовсем — забирает вложения с собой, иначе строка в attachments
+        // и файл остаются висеть навечно, и files:orphans их не увидит
+        $note->forceDelete();
+
+        assertFalse(Storage::exists($path), 'файл вложения убран');
+        assertSame(0, Attachment::query()->count(), 'запись вложения убрана');
+    });
+});
+
 test('вложения: файл без записи считается сиротой', function (): void {
     withOwnDatabase(static function (): void {
         /** @var User $owner */

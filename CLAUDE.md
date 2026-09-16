@@ -259,8 +259,10 @@ SQL; у каждой миграции честный `down()`. Накат идё
 `Events::fire('model.saving', ['model' => $this])` и соседей (`creating`, `updating`,
 `deleting`, `restoring` — до, могут отменить операцию через `false`; `created`,
 `updated`, `saved`, `deleted`, `restored` — после, просто уведомление). Событие одно на
-все модели, слушатель узнаёт свою по `$payload['model'] instanceof …`. Подробности —
-`docs/DATABASE.md`.
+все модели, слушатель узнаёт свою по `$payload['model'] instanceof …`. Когда своя логика
+на события есть больше чем у одной модели, инстанс-проверки в общем слушателе удобнее
+собрать в наблюдателя — методы с теми же именами в одном классе на модель
+(`Database\Model\Observers`, реестр `config/observers.php`). Подробности — `docs/DATABASE.md`.
 
 ## 6. Соглашения по коду
 
