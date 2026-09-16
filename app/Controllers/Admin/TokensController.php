@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Controllers\Admin;
 
+use Rsgrinko\Proton\Access\Permission;
 use Rsgrinko\Proton\Http\Controller;
 use Rsgrinko\Proton\Http\Request;
 use Rsgrinko\Proton\Http\Response;
@@ -50,11 +51,18 @@ final class TokensController extends Controller
     public function store(Request $request): Response
     {
         $data = $this->validate($request, [
-            'name'    => 'nullable|max:191',
-            'user_id' => 'required|integer|exists:users',
-            'ips'     => 'nullable|max:500',
-            'days'    => 'nullable|integer',
-        ], ['name' => 'Название', 'user_id' => 'Владелец', 'ips' => 'Разрешённые адреса', 'days' => 'Срок в днях']);
+            'name'      => 'nullable|max:191',
+            'user_id'   => 'required|integer|exists:users',
+            'ips'       => 'nullable|max:500',
+            'days'      => 'nullable|integer',
+            'abilities' => 'nullable|max:500',
+        ], [
+            'name'      => 'Название',
+            'user_id'   => 'Владелец',
+            'ips'       => 'Разрешённые адреса',
+            'days'      => 'Срок в днях',
+            'abilities' => 'Права ключа',
+        ]);
 
         $ips = trim((string) ($data['ips'] ?? ''));
 
@@ -66,9 +74,19 @@ final class TokensController extends Controller
             }
         }
 
+        $abilities = trim((string) ($data['abilities'] ?? ''));
+
+        foreach (array_filter(array_map('trim', explode(',', $abilities))) as $ability) {
+            if (!Permission::known($ability)) {
+                $this->flash('Неизвестное право: ' . $ability, 'error');
+
+                return $this->redirect('admin.tokens');
+            }
+        }
+
         $days = max(0, (int) ($data['days'] ?? 0));
 
-        $issued = ApiToken::issue((string) ($data['name'] ?? ''), (int) $data['user_id'], $ips, $days);
+        $issued = ApiToken::issue((string) ($data['name'] ?? ''), (int) $data['user_id'], $ips, $days, $abilities);
 
         Audit::created(
             'token',

@@ -55,6 +55,11 @@ use Rsgrinko\Proton\View\View;
                 <span>Срок в днях</span>
                 <input type="number" name="days" min="0" value="0" placeholder="0 — без срока">
             </label>
+
+            <label>
+                <span>Права ключа (через запятую, пусто — как у владельца)</span>
+                <input type="text" name="abilities" placeholder="notes.view, notes.manage">
+            </label>
         </div>
 
         <div class="filter-actions">
@@ -78,6 +83,7 @@ use Rsgrinko\Proton\View\View;
                     <th>Ключ</th>
                     <th class="hide-sm">Владелец</th>
                     <th class="hide-sm">Адреса</th>
+                    <th class="hide-sm">Права</th>
                     <th>Состояние</th>
                     <th class="hide-sm">Срок</th>
                     <th class="hide-sm">Использован</th>
@@ -90,6 +96,7 @@ use Rsgrinko\Proton\View\View;
                         <td class="mono"><?= View::e($token->mask()) ?></td>
                         <td class="hide-sm"><?= View::e($owners[(int) $token->raw('user_id')] ?? '—') ?></td>
                         <td class="hide-sm muted small"><?= View::e((string) $token->raw('allowed_ips') ?: 'без ограничений') ?></td>
+                        <td class="hide-sm muted small"><?= View::e($token->abilities() === [] ? 'как у владельца' : implode(', ', $token->abilities())) ?></td>
                         <td>
                             <?php if ((int) $token->raw('active') === 1) { ?>
                                 <span class="badge ok">активен</span>

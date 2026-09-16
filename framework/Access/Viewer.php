@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Rsgrinko\Proton\Access;
 
+use Rsgrinko\Proton\Models\ApiToken;
 use Rsgrinko\Proton\Models\User;
 
 /**
@@ -65,6 +66,30 @@ final class Viewer
             (string) $user->login,
             (string) ($user->name !== '' ? $user->name : $user->login),
             $user->permissions(),
+            false,
+            $user
+        );
+    }
+
+    /**
+     * Тот же пользователь, но через ключ API: ключ со скоупом урезает права
+     * до пересечения с тем, что ему разрешили при выпуске, — даже если у
+     * владельца их больше. Пустой скоуп у ключа ничего не урезает.
+     */
+    public static function forToken(User $user, ApiToken $token): self
+    {
+        $permissions = $user->permissions();
+        $abilities   = $token->abilities();
+
+        if ($abilities !== []) {
+            $permissions = array_values(array_intersect($permissions, $abilities));
+        }
+
+        return new self(
+            $user->id(),
+            (string) $user->login,
+            (string) ($user->name !== '' ? $user->name : $user->login),
+            $permissions,
             false,
             $user
         );

@@ -50,7 +50,7 @@ final class ApiKey
 
         $token->markUsed($request->ip());
 
-        $viewer = Viewer::fromUser($user);
+        $viewer = Viewer::forToken($user, $token);
 
         $request->setAttribute('token', $token)
             ->setAttribute('user', $user)

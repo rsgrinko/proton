@@ -40,7 +40,7 @@ final class ApiToken extends Model
      *
      * @return array{token: self, key: string}
      */
-    public static function issue(string $name, int $userId, string $ipList = '', int $days = 0): array
+    public static function issue(string $name, int $userId, string $ipList = '', int $days = 0, string $abilities = ''): array
     {
         $prefix = Str::random(8);
         $secret = Str::random(40);
@@ -54,6 +54,7 @@ final class ApiToken extends Model
             'prefix'      => $prefix,
             'token_hash'  => self::hash($key),
             'allowed_ips' => $ipList,
+            'abilities'   => $abilities,
             'active'      => 1,
             // Ключ без срока живёт вечно — это осознанный выбор того, кто его выпускал
             'expires_at'  => $days > 0 ? date('Y-m-d H:i:s', time() + $days * 86400) : null,
@@ -151,6 +152,26 @@ final class ApiToken extends Model
     public function markUsed(string $ip): void
     {
         $this->forceFill(['last_used_at' => Connection::now(), 'last_used_ip' => $ip])->save();
+    }
+
+    /**
+     * Права, которыми ограничен ключ — пусто значит без ограничения (может
+     * всё, что может владелец).
+     *
+     * @return array<int, string>
+     */
+    public function abilities(): array
+    {
+        $list = trim((string) $this->raw('abilities'));
+
+        if ($list === '') {
+            return [];
+        }
+
+        return array_values(array_filter(
+            array_map('trim', explode(',', $list)),
+            static fn (string $ability): bool => $ability !== ''
+        ));
     }
 
     /**

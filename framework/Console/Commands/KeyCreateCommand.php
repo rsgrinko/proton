@@ -25,7 +25,7 @@ final class KeyCreateCommand extends Command
 
     public function usage(): string
     {
-        return 'key:create <название> --owner=<логин> [--ips=]';
+        return 'key:create <название> --owner=<логин> [--ips=] [--abilities=]';
     }
 
     public function run(): int
@@ -47,7 +47,13 @@ final class KeyCreateCommand extends Command
             return 1;
         }
 
-        $issued = ApiToken::issue($name, $user->id(), (string) $this->option('ips', ''));
+        $issued = ApiToken::issue(
+            $name,
+            $user->id(),
+            (string) $this->option('ips', ''),
+            0,
+            (string) $this->option('abilities', '')
+        );
 
         $this->ok('Ключ выпущен для ' . $login);
         $this->line('');

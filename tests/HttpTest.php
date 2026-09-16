@@ -604,6 +604,29 @@ test('api: показатели отдаются по ключу и только
     ]));
 });
 
+test('api: скоуп ключа урезает право владельца, а не расширяет его', function (): void {
+    // У самого админа system.view есть, но у этого ключа в скоупе только notes.view —
+    // пересечение прав ключа и владельца не даёт system.view, хотя у владельца оно есть
+    $scoped = ApiToken::issue('только заметки', httpAdmin()->id(), '', 0, 'notes.view');
+
+    assertSame(['notes.view'], $scoped['token']->abilities());
+
+    $headers = ['authorization' => 'Bearer ' . $scoped['key']];
+
+    assertStatus(403, httpRequest('GET', '/api/v1/metrics', null, [], [], $headers), 'права не было в скоупе ключа');
+    assertStatus(200, httpRequest('GET', '/api/v1/notes', null, [], [], $headers), 'это право в скоупе есть');
+
+    // Скоуп с правом, которого у самого владельца нет, ничего не добавляет —
+    // в списке ключа оно есть, но пересечение с правами владельца его снимает
+    $overreaching = ApiToken::issue('лишку', httpUser()->id(), '', 0, 'system.view');
+
+    assertSame(['system.view'], $overreaching['token']->abilities(), 'в скоупе ключа право записано как есть');
+
+    assertStatus(403, httpRequest('GET', '/api/v1/metrics', null, [], [], [
+        'authorization' => 'Bearer ' . $overreaching['key'],
+    ]), 'но у владельца его нет, поэтому ключ его тоже не получает');
+});
+
 test('api: здоровье отвечает без ключа и разбито по зависимостям', function (): void {
     $response = httpRequest('GET', '/api/v1/health');
 
