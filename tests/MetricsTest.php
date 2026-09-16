@@ -104,6 +104,6 @@ test('присмотр: порог сработал — сообщение ух�
         assertSame($mark, (int) Setting::get('monitor:alert:http.errors', '0'));
     });
 
-    Setting::set('monitor:alert:http.errors', '0');
+    Setting::forget('monitor:alert:http.errors');
     Cache::flush();
 });
