@@ -21,7 +21,12 @@ final class User extends Model
 {
     protected static string $table = 'users';
 
-    protected array $fillable = ['login', 'email', 'name', 'role_id', 'active'];
+    protected array $fillable = [
+        'login', 'email', 'name', 'role_id', 'active',
+        // Профиль сверх минимума ядра: не используются нигде, кроме самой
+        // карточки — свободны для своих нужд в приложении поверх фреймворка
+        'phone', 'website', 'position', 'location', 'bio',
+    ];
 
     protected array $hidden = ['password_hash'];
 

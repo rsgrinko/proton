@@ -36,6 +36,31 @@ use Rsgrinko\Proton\View\View;
                 <input type="email" name="email" value="<?= View::e((string) $user->email) ?>">
             </label>
 
+            <label>
+                <span>Телефон</span>
+                <input type="tel" name="phone" value="<?= View::e((string) $user->phone) ?>" placeholder="+7 900 000-00-00">
+            </label>
+
+            <label>
+                <span>Сайт</span>
+                <input type="url" name="website" value="<?= View::e((string) $user->website) ?>" placeholder="https://example.com">
+            </label>
+
+            <label>
+                <span>Должность</span>
+                <input type="text" name="position" value="<?= View::e((string) $user->position) ?>">
+            </label>
+
+            <label>
+                <span>Город</span>
+                <input type="text" name="location" value="<?= View::e((string) $user->location) ?>">
+            </label>
+
+            <label>
+                <span>О себе</span>
+                <textarea name="bio" style="min-height: 70px;"><?= View::e((string) $user->bio) ?></textarea>
+            </label>
+
             <button type="submit" class="primary">Сохранить</button>
         </form>
     </div>

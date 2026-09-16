@@ -71,6 +71,28 @@ $hint   = $isNew ? 'пусто — придумаем сами' : 'пусто �
 
 <?php if (!$isNew) { ?>
     <div class="card">
+        <h2>Профиль</h2>
+        <p class="muted small">Необязательные поля — заполняет сам человек в своём профиле.</p>
+
+        <dl class="props">
+            <dt>Телефон</dt>
+            <dd><?= $user->phone !== '' ? View::e((string) $user->phone) : '<span class="muted">—</span>' ?></dd>
+
+            <dt>Сайт</dt>
+            <dd><?php if ($user->website !== '') { ?><a href="<?= View::e((string) $user->website) ?>" target="_blank" rel="noopener"><?= View::e((string) $user->website) ?></a><?php } else { ?><span class="muted">—</span><?php } ?></dd>
+
+            <dt>Должность</dt>
+            <dd><?= $user->position !== '' ? View::e((string) $user->position) : '<span class="muted">—</span>' ?></dd>
+
+            <dt>Город</dt>
+            <dd><?= $user->location !== '' ? View::e((string) $user->location) : '<span class="muted">—</span>' ?></dd>
+
+            <dt>О себе</dt>
+            <dd><?= $user->bio !== '' ? nl2br(View::e((string) $user->bio)) : '<span class="muted">—</span>' ?></dd>
+        </dl>
+    </div>
+
+    <div class="card">
         <h2>Устройства</h2>
 
         <?php if ($devices === []) { ?>

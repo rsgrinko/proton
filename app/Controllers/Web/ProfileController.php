@@ -31,26 +31,32 @@ final class ProfileController extends Controller
     }
 
     /**
-     * Имя и почта.
+     * Имя, почта и необязательные поля сверх минимума ядра.
      */
     public function update(Request $request, User $user): Response
     {
         $data = $this->validate($request, [
-            'name'  => 'nullable|max:191',
-            'email' => 'nullable|email|max:191|unique:users,email,' . $user->id(),
-        ], ['name' => 'Имя', 'email' => 'Почта']);
+            'name'     => 'nullable|max:191',
+            'email'    => 'nullable|email|max:191|unique:users,email,' . $user->id(),
+            'phone'    => 'nullable|max:32',
+            'website'  => 'nullable|url|max:191',
+            'position' => 'nullable|max:191',
+            'location' => 'nullable|max:191',
+            'bio'      => 'nullable|max:500',
+        ], [
+            'name' => 'Имя', 'email' => 'Почта', 'phone' => 'Телефон',
+            'website' => 'Сайт', 'position' => 'Должность', 'location' => 'Город', 'bio' => 'О себе',
+        ]);
 
-        $before = ['name' => $user->name, 'email' => $user->email];
+        $fields = ['name', 'email', 'phone', 'website', 'position', 'location', 'bio'];
+        $before = array_intersect_key($user->toArray(), array_flip($fields));
 
-        $user->forceFill([
-            'name'  => (string) ($data['name'] ?? ''),
-            'email' => (string) ($data['email'] ?? ''),
-        ])->save();
+        $user->forceFill(array_map(static fn (mixed $value): string => (string) ($value ?? ''), $data))->save();
 
-        Audit::updated('user', $user->id(), 'изменён свой профиль', Audit::between($before, [
-            'name'  => $user->name,
-            'email' => $user->email,
-        ]));
+        Audit::updated('user', $user->id(), 'изменён свой профиль', Audit::between(
+            $before,
+            array_intersect_key($user->toArray(), array_flip($fields))
+        ));
 
         $this->flash('Профиль сохранён');
 
