@@ -7,6 +7,7 @@ declare(strict_types=1);
  */
 
 use Rsgrinko\Proton\Database\Connection;
+use Rsgrinko\Proton\Database\Lock;
 use Rsgrinko\Proton\Models\Setting;
 use Rsgrinko\Proton\Queue\Job;
 use Rsgrinko\Proton\Queue\Queue;
@@ -185,6 +186,35 @@ test('расписание: задача выполняется один раз 
         Scheduler::run();
 
         assertSame(1, $runs, 'второй раз в том же окне выполнять нечего');
+
+        Scheduler::reset();
+    });
+});
+
+test('расписание: задачу, которую уже держит другой процесс, run() не дублирует', function (): void {
+    withOwnDatabase(static function (): void {
+        Scheduler::reset();
+
+        $runs = 0;
+
+        Scheduler::every(3600, 'test:overlap', static function () use (&$runs): void {
+            $runs++;
+        });
+
+        // Так выглядит соседний воркер, который уже взялся за эту же задачу
+        $foreign = new Lock(null, 'schedule:test:overlap');
+
+        assertTrue($foreign->acquire(0));
+
+        Scheduler::run();
+
+        assertSame(0, $runs, 'блокировка держит чужой процесс — свой прогон пропускает задачу');
+
+        $foreign->release();
+
+        Scheduler::run();
+
+        assertSame(1, $runs, 'блокировка снята — задача выполняется как обычно');
 
         Scheduler::reset();
     });
