@@ -209,6 +209,33 @@ php bin/proton status | route:list | cache:clear | logs:purge | app:key | seed
 Воркер после выкладки кода нужно перезапускать: он держит в памяти и классы, и
 настройки.
 
+Без запущенного воркера очередь копится, письма не уходят, расписание не идёт.
+Держать его — задача systemd, не cron:
+
+```ini
+# /etc/systemd/system/proton-worker.service
+[Unit]
+Description=Proton worker
+After=network.target mysql.service
+
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=/var/www/proton
+ExecStart=/usr/bin/php /var/www/proton/bin/proton worker
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+systemctl enable --now proton-worker
+```
+
+Несколько очередей разными процессами, вариант без systemd (cron) — `docs/DEPLOY.md`.
+
 ## Документация
 
 | Файл | О чём |
