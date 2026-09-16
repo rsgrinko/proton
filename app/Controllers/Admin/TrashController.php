@@ -83,6 +83,79 @@ final class TrashController extends Controller
     }
 
     /**
+     * Вернуть или добить сразу несколько отмеченных записей.
+     */
+    public function bulk(Request $request, Viewer $viewer): Response
+    {
+        $data = $this->validate($request, [
+            'action' => 'required|in:restore,destroy',
+        ], ['action' => 'Действие']);
+
+        $key   = (string) $request->input('kind', '');
+        $kinds = $this->allowed($viewer);
+
+        if (!isset($kinds[$key])) {
+            throw new AccessDenied('Этот раздел корзины вам не доступен');
+        }
+
+        $ids = array_values(array_filter(array_map('intval', (array) $request->input('ids', []))));
+
+        if ($ids === []) {
+            $this->flash('Не отмечено ни одной записи', 'error');
+
+            return $this->redirect('admin.trash', ['kind' => $key]);
+        }
+
+        /** @var class-string<Model> $model */
+        $model  = $kinds[$key]['model'];
+        $action = (string) $data['action'];
+        $done   = 0;
+
+        /** @var Model $record */
+        foreach ($model::query()->onlyTrashed()->whereIn('id', $ids)->get() as $record) {
+            $action === 'restore' ? $record->restore() : $record->forceDelete();
+
+            $done++;
+        }
+
+        $entity = Trash::kind($key)['entity'] ?? $key;
+
+        if ($action === 'restore') {
+            Audit::action($entity, 0, 'массовое возвращение из корзины: ' . $done);
+        } else {
+            Audit::deleted($entity, 0, 'массовое удаление из корзины: ' . $done);
+        }
+
+        $label = $action === 'restore' ? 'возвращено' : 'удалено окончательно';
+
+        $this->flash($done > 0 ? 'Готово, ' . $label . ': ' . $done : 'Ничего не изменилось', $done > 0 ? 'ok' : 'error');
+
+        return $this->redirect('admin.trash', ['kind' => $key]);
+    }
+
+    /**
+     * Очистить раздел целиком, а не только то, что видно на странице.
+     * Обратной дороги нет — кнопка на форме требует подтверждения.
+     */
+    public function clear(Request $request, Viewer $viewer): Response
+    {
+        $key   = (string) $request->input('kind', '');
+        $kinds = $this->allowed($viewer);
+
+        if (!isset($kinds[$key])) {
+            throw new AccessDenied('Этот раздел корзины вам не доступен');
+        }
+
+        $removed = Trash::query($key)?->forceDelete() ?? 0;
+
+        Audit::deleted(Trash::kind($key)['entity'] ?? $key, 0, 'корзина очищена целиком: ' . $removed);
+
+        $this->flash($removed > 0 ? 'Корзина очищена, удалено: ' . $removed : 'Корзина была пуста');
+
+        return $this->redirect('admin.trash', ['kind' => $key]);
+    }
+
+    /**
      * Раздел и запись из запроса — с проверкой права на этот раздел.
      *
      * @return array{0: string, 1: Model}

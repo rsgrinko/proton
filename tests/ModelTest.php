@@ -119,6 +119,28 @@ test('модель: мягкое удаление прячет запись, н�
     assertNotNull(Note::find($id), 'после восстановления запись снова видна');
 });
 
+test('модель: forceDelete() запроса бьёт только по своей области, а не по всей таблице', function (): void {
+    $user = modelTestUser();
+
+    $alive   = Note::create(['title' => 'Живая']);
+    $trashed = Note::create(['title' => 'В корзине']);
+
+    $alive->forceFill(['user_id' => $user->id()])->save();
+    $trashed->forceFill(['user_id' => $user->id()])->save();
+
+    $trashed->delete();
+
+    // onlyTrashed()->forceDelete() без своего where() не должен цеплять живые
+    // записи — раньше цеплял: у forceDelete() область мягкого удаления
+    // не применялась вовсе
+    Note::query()->where('user_id', $user->id())->onlyTrashed()->forceDelete();
+
+    assertNotNull(Note::find($alive->id()), 'живая запись осталась');
+    assertNull(Note::query()->withTrashed()->where('id', $trashed->id())->first(), 'удалённая пропала насовсем');
+
+    $alive->forceDelete();
+});
+
 test('модель: findOrFail бросает понятное исключение', function (): void {
     $error = assertThrows(static function (): void {
         Note::findOrFail(987654321);

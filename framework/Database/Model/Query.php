@@ -207,9 +207,15 @@ final class Query extends Builder
 
     /**
      * Настоящее удаление, даже если включено мягкое.
+     *
+     * Область по мягкому удалению (onlyTrashed()/withTrashed()) применяется
+     * так же, как в update() и delete(): без этого forceDelete() без своего
+     * where() бил бы по всей таблице, а не только по корзине.
      */
     public function forceDelete(): int
     {
+        $this->applyTrashed();
+
         return parent::delete();
     }
 

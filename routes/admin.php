@@ -114,6 +114,8 @@ return static function (Router $router): void {
             $router->get('', [TrashController::class, 'index'])->name('admin.trash');
             $router->post('/restore', [TrashController::class, 'restore'])->name('admin.trash.restore');
             $router->post('/destroy', [TrashController::class, 'destroy'])->name('admin.trash.destroy');
+            $router->post('/bulk', [TrashController::class, 'bulk'])->name('admin.trash.bulk');
+            $router->post('/clear', [TrashController::class, 'clear'])->name('admin.trash.clear');
         });
 
         $router->get('/audit', [AuditController::class, 'index'])

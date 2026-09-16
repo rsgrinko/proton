@@ -142,6 +142,58 @@ test('массовые действия: без отметок ничего не
     });
 });
 
+test('корзина: массово возвращает и добивает отмеченные', function (): void {
+    withOwnDatabase(static function (): void {
+        /** @var User $admin */
+        $admin = Factory::of(User::class)->create(['role_id' => Role::admin()?->id() ?? 0]);
+        /** @var array<int, User> $people */
+        $people = Factory::of(User::class)->times(3)->create();
+
+        foreach ($people as $person) {
+            $person->delete();
+        }
+
+        actingAs($admin);
+
+        $ids = array_map(static fn (User $user): int => $user->id(), $people);
+
+        post('/admin/trash/bulk', ['kind' => 'users', 'action' => 'restore', 'ids' => array_slice($ids, 0, 2)]);
+
+        assertSame(1, User::query()->onlyTrashed()->count(), 'два вернулись, один остался в корзине');
+
+        post('/admin/trash/bulk', ['kind' => 'users', 'action' => 'destroy', 'ids' => array_slice($ids, 2, 1)]);
+
+        assertSame(0, Trash::query('users')?->count(), 'в корзине никого не осталось');
+        assertSame(3, User::query()->count(), 'админ и два возвращённых на месте');
+
+        actingAs(null);
+    });
+});
+
+test('корзина: «очистить» убирает весь раздел разом, а не только страницу', function (): void {
+    withOwnDatabase(static function (): void {
+        /** @var User $admin */
+        $admin = Factory::of(User::class)->create(['role_id' => Role::admin()?->id() ?? 0]);
+        /** @var array<int, User> $people */
+        $people = Factory::of(User::class)->times(5)->create();
+
+        foreach ($people as $person) {
+            $person->delete();
+        }
+
+        actingAs($admin);
+
+        assertSame(5, Trash::query('users')?->count());
+
+        assertRedirect('/admin/trash', post('/admin/trash/clear', ['kind' => 'users']));
+
+        assertSame(0, Trash::query('users')?->count(), 'корзина пуста целиком');
+        assertSame(1, User::query()->withTrashed()->count(), 'остался только админ');
+
+        actingAs(null);
+    });
+});
+
 test('история: карточка показывает записи журнала по этой записи', function (): void {
     withOwnDatabase(static function (): void {
         /** @var User $admin */
