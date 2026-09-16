@@ -10,6 +10,7 @@ use Rsgrinko\Proton\Auth\Auth;
 use Rsgrinko\Proton\Auth\Csrf;
 use Rsgrinko\Proton\Http\Response;
 use Rsgrinko\Proton\Http\Router;
+use Rsgrinko\Proton\Models\User;
 use Rsgrinko\Proton\Support\Config;
 use Rsgrinko\Proton\Support\ProtonException;
 
@@ -210,6 +211,23 @@ final class View
     public static function viewer(): Viewer
     {
         return Auth::viewer();
+    }
+
+    /**
+     * Идёт ли сейчас «вход под пользователем» — каркас страницы по этому
+     * показывает верхнюю плашку с кнопкой возврата.
+     */
+    public static function isImpersonating(): bool
+    {
+        return Auth::isImpersonating();
+    }
+
+    /**
+     * Настоящий вошедший во время подмены — тот, кому вернётся сессия.
+     */
+    public static function impersonator(): ?User
+    {
+        return Auth::realUser();
     }
 
     /**

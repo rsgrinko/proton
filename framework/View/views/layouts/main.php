@@ -261,6 +261,13 @@ $unread = $viewer->isGuest() ? 0 : UserNotification::unreadFor($viewer->id());
         .flash.ok { background: var(--ok-bg); color: var(--ok); }
         .flash.error { background: var(--err-bg); color: var(--err); }
 
+        /* Плашка «вход под пользователем»: сверху шапки, чтобы не спутать
+           с обычным флеш-сообщением и не потерять при прокрутке */
+        .impersonating { background: var(--warn-bg); color: var(--warn); padding: 6px 20px;
+                          display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: 13px; }
+        .impersonating form { display: inline; }
+        .impersonating button { padding: 3px 10px; font-size: 12px; }
+
         .muted { color: var(--muted); }
         .mono { font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
         .nowrap { white-space: nowrap; }
@@ -363,6 +370,16 @@ $unread = $viewer->isGuest() ? 0 : UserNotification::unreadFor($viewer->id());
     </style>
 </head>
 <body>
+<?php if (!$bare && View::isImpersonating()) { ?>
+    <div class="impersonating">
+        Вы вошли как <b><?= View::e($viewer->name()) ?></b>, обычно — <?= View::e((string) View::impersonator()?->login) ?>.
+        <form method="post" action="<?= View::e(View::route('admin.impersonate.stop')) ?>">
+            <?= View::csrf() ?>
+            <button type="submit">Вернуться в свою учётную запись</button>
+        </form>
+    </div>
+<?php } ?>
+
 <?php if (!$bare) { ?>
 <header>
     <input type="checkbox" id="menu-toggle" class="menu-toggle" hidden>

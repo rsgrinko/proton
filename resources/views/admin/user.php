@@ -10,6 +10,7 @@ declare(strict_types=1);
  * @var array<int, array{id: string, kind: string, ip: string, agent: string, created: string, last: string, current: bool}> $devices
  */
 
+use Rsgrinko\Proton\Access\Permission;
 use Rsgrinko\Proton\Auth\Password;
 use Rsgrinko\Proton\View\View;
 
@@ -97,6 +98,18 @@ $hint   = $isNew ? 'пусто — придумаем сами' : 'пусто �
             </div>
         <?php } ?>
     </div>
+
+    <?php if (View::can(Permission::USERS_IMPERSONATE) && $user->id() !== View::viewer()->id() && $user->isActive()) { ?>
+        <div class="card">
+            <h2>Вход под пользователем</h2>
+            <p class="muted small">Панель и сайт откроются его правами — свои действия увидите в журнале за него.</p>
+
+            <form method="post" action="<?= View::e(View::route('admin.users.impersonate', ['id' => $user->id()])) ?>">
+                <?= View::csrf() ?>
+                <button type="submit">Войти как <?= View::e((string) $user->login) ?></button>
+            </form>
+        </div>
+    <?php } ?>
 
     <div class="card">
         <h2>Удаление</h2>

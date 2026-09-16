@@ -18,15 +18,16 @@ namespace Rsgrinko\Proton\Access;
  */
 final class Permission
 {
-    public const USERS_MANAGE    = 'users.manage';
-    public const ROLES_MANAGE    = 'roles.manage';
-    public const AUDIT_VIEW      = 'audit.view';
-    public const LOGS_VIEW       = 'logs.view';
-    public const SYSTEM_VIEW     = 'system.view';
-    public const SYSTEM_MANAGE   = 'system.manage';
-    public const FILES_MANAGE    = 'files.manage';
-    public const WEBHOOKS_MANAGE = 'webhooks.manage';
-    public const SETTINGS_MANAGE = 'settings.manage';
+    public const USERS_MANAGE      = 'users.manage';
+    public const USERS_IMPERSONATE = 'users.impersonate';
+    public const ROLES_MANAGE      = 'roles.manage';
+    public const AUDIT_VIEW        = 'audit.view';
+    public const LOGS_VIEW         = 'logs.view';
+    public const SYSTEM_VIEW       = 'system.view';
+    public const SYSTEM_MANAGE     = 'system.manage';
+    public const FILES_MANAGE      = 'files.manage';
+    public const WEBHOOKS_MANAGE   = 'webhooks.manage';
+    public const SETTINGS_MANAGE   = 'settings.manage';
 
     /** Видеть и править чужие записи, а не только свои */
     public const DATA_ALL = 'data.all';
@@ -38,16 +39,17 @@ final class Permission
      */
     private const CORE = [
         'Сервис' => [
-            self::USERS_MANAGE    => 'Управлять пользователями',
-            self::ROLES_MANAGE    => 'Управлять ролями',
-            self::AUDIT_VIEW      => 'Читать журнал действий',
-            self::LOGS_VIEW       => 'Читать логи',
-            self::SYSTEM_VIEW     => 'Смотреть состояние',
-            self::SYSTEM_MANAGE   => 'Управлять очередью и обслуживанием',
-            self::FILES_MANAGE    => 'Управлять загруженными файлами',
-            self::WEBHOOKS_MANAGE => 'Управлять вебхуками',
-            self::SETTINGS_MANAGE => 'Менять настройки приложения',
-            self::DATA_ALL        => 'Доступ к чужим данным, а не только к своим',
+            self::USERS_MANAGE      => 'Управлять пользователями',
+            self::USERS_IMPERSONATE => 'Входить под пользователем',
+            self::ROLES_MANAGE      => 'Управлять ролями',
+            self::AUDIT_VIEW        => 'Читать журнал действий',
+            self::LOGS_VIEW         => 'Читать логи',
+            self::SYSTEM_VIEW       => 'Смотреть состояние',
+            self::SYSTEM_MANAGE     => 'Управлять очередью и обслуживанием',
+            self::FILES_MANAGE      => 'Управлять загруженными файлами',
+            self::WEBHOOKS_MANAGE   => 'Управлять вебхуками',
+            self::SETTINGS_MANAGE   => 'Менять настройки приложения',
+            self::DATA_ALL          => 'Доступ к чужим данным, а не только к своим',
         ],
     ];
 
@@ -149,6 +151,7 @@ final class Permission
     {
         $service = [
             self::USERS_MANAGE,
+            self::USERS_IMPERSONATE,
             self::ROLES_MANAGE,
             self::AUDIT_VIEW,
             self::LOGS_VIEW,

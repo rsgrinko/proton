@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Controllers\Admin;
 
+use Rsgrinko\Proton\Auth\Auth;
 use Rsgrinko\Proton\Auth\Devices;
 use Rsgrinko\Proton\Auth\Password;
 use Rsgrinko\Proton\Http\Controller;
@@ -228,6 +229,60 @@ final class UsersController extends Controller
         $this->flash('Пользователь удалён');
 
         return $this->redirect('admin.users');
+    }
+
+    /**
+     * Войти под пользователем: смотреть панель и сайт его глазами, с его правами.
+     * Право `users.impersonate` уже проверила прослойка маршрута — здесь только
+     * то, что от маршрута не зависит: не собой, не отключённым.
+     *
+     * $user — тот, кто нажал кнопку, его роутер подставляет по имени аргумента
+     * из атрибута запроса (см. Authenticate).
+     */
+    public function impersonate(int $id, User $user): Response
+    {
+        /** @var User $target */
+        $target = $this->require(User::find($id), 'admin.users', 'Пользователь не найден');
+
+        if ($target->id() === $user->id()) {
+            $this->flash('Входить под собой незачем', 'error');
+
+            return $this->redirect('admin.users.show', ['id' => $target->id()]);
+        }
+
+        if (!$target->isActive()) {
+            $this->flash('Пользователь отключён', 'error');
+
+            return $this->redirect('admin.users.show', ['id' => $target->id()]);
+        }
+
+        Auth::impersonate($target);
+
+        Audit::action('user', $target->id(), (string) $user->login . ' вошёл под пользователем ' . (string) $target->login);
+
+        $this->flash('Вы вошли как ' . (string) $target->login . ' — вернуться можно кнопкой сверху');
+
+        return $this->redirect('home');
+    }
+
+    /**
+     * Вернуться в свою сессию. Доступен всегда — маршрут вне group('/users')
+     * и без can:, иначе во время подмены выйти назад стало бы нечем.
+     */
+    public function stopImpersonating(): Response
+    {
+        $target = Auth::user();
+        $admin  = Auth::realUser();
+
+        Auth::stopImpersonating();
+
+        Audit::action('user', $admin?->id() ?? 0, (string) $admin?->login . ' вернулся из-под пользователя ' . (string) $target?->login);
+
+        $this->flash('Вы вернулись в свою учётную запись');
+
+        return $target !== null
+            ? $this->redirect('admin.users.show', ['id' => $target->id()])
+            : $this->redirect('admin.dashboard');
     }
 
     /**

@@ -31,8 +31,15 @@ final class Auth
     /** Ключ пользователя в сессии */
     private const SESSION_KEY = 'auth_user';
 
-    /** @var User|null|false false — ещё не смотрели */
+    /** Ключ id того, за кого сейчас смотрят — «войти под пользователем» из панели */
+    private const IMPERSONATE_KEY = 'auth_impersonate';
+
+    /** @var User|null|false false — ещё не смотрели. Эффективный пользователь: во время
+     *  подмены это тот, за кого смотрят, а не тот, кто нажал «войти под пользователем» */
     private static User|null|false $cached = false;
+
+    /** @var User|null|false false — ещё не смотрели. Настоящий вошедший, без подмены */
+    private static User|null|false $realCached = false;
 
     /**
      * @var array{value: string, expires: int}|null
@@ -73,8 +80,10 @@ final class Auth
     }
 
     /**
-     * Текущий пользователь или null. Данные перечитываются из базы, поэтому
-     * отключённый пользователь теряет доступ сразу, а не после выхода.
+     * Текущий пользователь или null — с поправкой на «войти под пользователем»:
+     * во время подмены это тот, за кого смотрят, а не тот, кто её включил.
+     * Данные перечитываются из базы, поэтому отключённый пользователь теряет
+     * доступ сразу, а не после выхода.
      */
     public static function user(): ?User
     {
@@ -82,13 +91,63 @@ final class Auth
             return self::$cached;
         }
 
+        $real = self::resolveReal();
+
+        if ($real === null) {
+            return self::$cached = null;
+        }
+
+        $targetId = (int) ($_SESSION[self::IMPERSONATE_KEY] ?? 0);
+
+        if ($targetId > 0) {
+            $target = User::find($targetId);
+
+            if ($target !== null && $target->isActive()) {
+                return self::$cached = $target;
+            }
+
+            // Подменяемого удалили или отключили, пока за него смотрели —
+            // тихо возвращаемся к себе, а не роняем страницу
+            unset($_SESSION[self::IMPERSONATE_KEY]);
+        }
+
+        return self::$cached = $real;
+    }
+
+    /**
+     * Настоящий вошедший, без учёта подмены — тот, кто нажал «войти под
+     * пользователем» и кому вернётся сессия после «выйти из-под пользователя».
+     */
+    public static function realUser(): ?User
+    {
+        if (self::$realCached !== false) {
+            return self::$realCached;
+        }
+
+        return self::$realCached = self::resolveReal();
+    }
+
+    public static function check(): bool
+    {
+        return self::user() !== null;
+    }
+
+    /**
+     * Настоящая сессия как она есть, без поправки на подмену — раньше это было
+     * тело user(). Здесь же живут проверки живучести сессии (устройство,
+     * «выйти на остальных», срок), и они всегда идут по реальному id: во время
+     * подмены сеанс всё равно принадлежит администратору, а не тому, кого он
+     * сейчас изображает.
+     */
+    private static function resolveReal(): ?User
+    {
         self::startSession();
 
         $id = (int) ($_SESSION[self::SESSION_KEY]['id'] ?? 0);
 
         if ($id === 0) {
             // Сессии нет — может, человек просил себя запомнить
-            return self::$cached = self::fromRememberCookie();
+            return self::fromRememberCookie();
         }
 
         // Слишком долго не заходил — просим войти заново
@@ -100,7 +159,7 @@ final class Auth
             // выход. Иначе «запомнить меня» работало бы лишь до конца сессии
             self::clearSession();
 
-            return self::$cached = self::fromRememberCookie();
+            return self::fromRememberCookie();
         }
 
         $user = User::find($id);
@@ -108,7 +167,7 @@ final class Auth
         if ($user === null || !$user->isActive()) {
             self::logout();
 
-            return self::$cached = null;
+            return null;
         }
 
         // Сеанс могли завершить с другого устройства
@@ -116,7 +175,7 @@ final class Auth
             self::clearSession();
             self::forgetRememberCookie();
 
-            return self::$cached = null;
+            return null;
         }
 
         $_SESSION[self::SESSION_KEY]['seen'] = time();
@@ -127,12 +186,7 @@ final class Auth
             UserSession::touch($sid, self::ip());
         }
 
-        return self::$cached = $user;
-    }
-
-    public static function check(): bool
-    {
-        return self::user() !== null;
+        return $user;
     }
 
     public static function id(): int
@@ -239,6 +293,11 @@ final class Auth
             Csrf::rotate();
         }
 
+        // Новый настоящий вход — прежняя подмена (если она была в этой сессии
+        // до перезахода) больше не имеет смысла
+        unset($_SESSION[self::IMPERSONATE_KEY]);
+        self::$realCached = false;
+
         $_SESSION[self::SESSION_KEY] = [
             'id'      => $user->id(),
             'login'   => (string) $user->login,
@@ -270,6 +329,56 @@ final class Auth
         UserSession::open($user->id(), (string) $_SESSION[self::SESSION_KEY]['sid'], self::ip(), self::agent(), $selector);
 
         $user->markLogin(self::ip());
+    }
+
+    // --- Вход под пользователем ("impersonation") ----------------------------
+
+    /**
+     * Войти под чужой учёткой, оставаясь собой для «выйти обратно». Проверку
+     * прав (кому вообще можно жать эту кнопку) делает право `users.impersonate`
+     * у маршрута — сюда приходит уже разрешённый вызов.
+     *
+     * Не трогает сессию входа как таковую (id, sid, remember-селектор) — там
+     * по-прежнему настоящий администратор: `sessionAlive()`, долгая кука и опись
+     * устройств продолжают проверяться по нему. Подменяется только то, кого
+     * возвращает `user()`.
+     *
+     * Возвращает false, если сессии нет или подменять некого (самого себя).
+     */
+    public static function impersonate(User $target): bool
+    {
+        $real = self::realUser();
+
+        if ($real === null || $real->id() === $target->id()) {
+            return false;
+        }
+
+        self::startSession();
+
+        $_SESSION[self::IMPERSONATE_KEY] = $target->id();
+
+        self::$cached = false;
+
+        return true;
+    }
+
+    /**
+     * Вернуться в свою сессию. Без активной подмены — просто ничего не делает.
+     */
+    public static function stopImpersonating(): void
+    {
+        self::startSession();
+
+        unset($_SESSION[self::IMPERSONATE_KEY]);
+
+        self::$cached = false;
+    }
+
+    public static function isImpersonating(): bool
+    {
+        self::startSession();
+
+        return (int) ($_SESSION[self::IMPERSONATE_KEY] ?? 0) > 0;
     }
 
     public static function logout(): void
@@ -321,6 +430,7 @@ final class Auth
     public static function forget(): void
     {
         self::$cached        = false;
+        self::$realCached    = false;
         self::$pendingCookie = null;
     }
 
@@ -329,7 +439,8 @@ final class Auth
      */
     public static function actAs(?User $user): void
     {
-        self::$cached = $user;
+        self::$cached     = $user;
+        self::$realCached = $user;
     }
 
     // --- Куки ----------------------------------------------------------------
@@ -522,9 +633,10 @@ final class Auth
      */
     private static function clearSession(): void
     {
-        unset($_SESSION[self::SESSION_KEY]);
+        unset($_SESSION[self::SESSION_KEY], $_SESSION[self::IMPERSONATE_KEY]);
 
-        self::$cached = null;
+        self::$cached     = null;
+        self::$realCached = null;
 
         if (session_status() === PHP_SESSION_ACTIVE) {
             session_regenerate_id(true);

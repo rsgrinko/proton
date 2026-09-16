@@ -42,7 +42,19 @@ return static function (Router $router): void {
             $router->post('/{id:\d+}', [UsersController::class, 'update']);
             $router->post('/{id:\d+}/delete', [UsersController::class, 'delete'])->name('admin.users.delete');
             $router->post('/bulk', [UsersController::class, 'bulk'])->name('admin.users.bulk');
+
+            // Своя, более узкая проверка поверх users.manage группы — не всякий,
+            // кто ведёт пользователей, должен уметь входить под ними
+            $router->post('/{id:\d+}/impersonate', [UsersController::class, 'impersonate'])
+                ->middleware('can:' . Permission::USERS_IMPERSONATE)
+                ->name('admin.users.impersonate');
         });
+
+        // Вне группы /users и без can: — во время подмены у виртуального
+        // пользователя может не быть ни users.manage, ни users.impersonate,
+        // а вернуться в свою сессию нужно всегда
+        $router->post('/impersonate/stop', [UsersController::class, 'stopImpersonating'])
+            ->name('admin.impersonate.stop');
 
         $router->group(['prefix' => '/roles', 'middleware' => 'can:' . Permission::ROLES_MANAGE], function (Router $router): void {
             $router->get('', [RolesController::class, 'index'])->name('admin.roles');
