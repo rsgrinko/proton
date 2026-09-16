@@ -210,6 +210,35 @@ test('копии: размер показывается по-человечес�
     assertSame('13,2 КБ', Backup::size(13517));
 });
 
+test('копии: временные файлы проверки подчищаются, свежие не трогаются', function (): void {
+    $dir = APP_ROOT . '/var/tmp/backup-purge-tests';
+
+    if (!is_dir($dir)) {
+        mkdir($dir, 0775, true);
+    }
+
+    withConfig(['paths.tmp' => $dir], static function () use ($dir): void {
+        $stale = $dir . '/backup-check-stale.sqlite';
+        $fresh = $dir . '/backup-check-fresh.sqlite';
+
+        file_put_contents($stale, 'x');
+        file_put_contents($fresh, 'x');
+
+        // «Старым» файл считаем по времени изменения — трогаем его в прошлое,
+        // а не ждём час в тесте
+        touch($stale, time() - 7200);
+
+        $removed = Backup::purgeTemp(60);
+
+        assertSame(1, $removed);
+        assertFalse(is_file($stale), 'зависший файл старше часа убран');
+        assertTrue(is_file($fresh), 'свежий не тронут — проверка может идти прямо сейчас');
+    });
+
+    @unlink($dir . '/backup-check-fresh.sqlite');
+    @rmdir($dir);
+});
+
 test('копии: каталог создаётся сам', function (): void {
     $dir = APP_ROOT . '/var/tmp/backups-fresh';
 

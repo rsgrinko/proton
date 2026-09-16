@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Rsgrinko\Proton\Queue;
 
+use Rsgrinko\Proton\Backup\Backup;
 use Rsgrinko\Proton\Cache\Cache;
 use Rsgrinko\Proton\Models\AuditEntry;
 use Rsgrinko\Proton\Models\BlockedIp;
@@ -270,6 +271,7 @@ final class Worker
             Trash::purge((int) Config::get('trash.keep_days', 30));
             ExportFile::purge((int) Config::get('export.keep_days', 7));
             Notify::purge();
+            Backup::purgeTemp();
 
             (new Logger('app'))->purge();
 

@@ -39,6 +39,11 @@ final class Backup
      */
     public static function create(): array
     {
+        // Свои временные файлы проверки подчищаем на каждом запуске: unlink
+        // в verifySqlite() иногда не срабатывает (на Windows PDO не всегда
+        // отпускает файл сразу же), а тихая ошибка — это тихая утечка
+        self::purgeTemp();
+
         $started = microtime(true);
         $db      = Connection::instance();
         $dir     = self::directory();
@@ -140,6 +145,29 @@ final class Backup
         $path = self::resolve($name);
 
         return is_file($path) && unlink($path);
+    }
+
+    /**
+     * Подчищает зависшие временные копии за собой (var/tmp/backup-*.sqlite и
+     * недоведённое до конца восстановление). Возвращает, сколько убрал.
+     *
+     * Свежие (младше часа) не трогает: может идти параллельная проверка.
+     */
+    public static function purgeTemp(int $olderThanMinutes = 60): int
+    {
+        $dir = (string) Config::get('paths.tmp', APP_ROOT . '/var/tmp');
+        $edge = time() - max(1, $olderThanMinutes) * 60;
+        $removed = 0;
+
+        foreach ((array) glob($dir . '/backup-*.sqlite') as $file) {
+            $file = (string) $file;
+
+            if (is_file($file) && filemtime($file) < $edge && @unlink($file)) {
+                $removed++;
+            }
+        }
+
+        return $removed;
     }
 
     /**
