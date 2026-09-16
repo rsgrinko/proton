@@ -38,6 +38,16 @@ final class User extends Model
     /** Мягкое удаление: человека возвращают из корзины, пока его не добили */
     protected bool $softDelete = true;
 
+    /**
+     * Права текущего запроса — посчитаны один раз. Без этого кэша `Auth::viewer()`
+     * заново лез бы в `roles` на каждую проверку `View::can()`, а в шапке
+     * панели их за один показ страницы бывает больше десятка (пункт меню —
+     * это одна проверка), и на удалённой базе счёт идёт на секунды.
+     *
+     * @var array<int, string>|null
+     */
+    private ?array $permissionsCache = null;
+
     public function role(): BelongsTo
     {
         return $this->belongsTo(Role::class, 'role_id');
@@ -60,9 +70,13 @@ final class User extends Model
      */
     public function permissions(): array
     {
+        if ($this->permissionsCache !== null) {
+            return $this->permissionsCache;
+        }
+
         $role = Role::find((int) $this->raw('role_id'));
 
-        return $role === null ? [] : $role->permissions();
+        return $this->permissionsCache = $role === null ? [] : $role->permissions();
     }
 
     public function isActive(): bool

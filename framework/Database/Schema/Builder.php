@@ -107,6 +107,10 @@ final class Builder
 
         if (!$this->pretend) {
             $this->db->execute($sql, $params);
+
+            // Мог быть и DDL — не только сиды: hasTable() не должен помнить
+            // схему до этой строки
+            $this->db->forgetTableCache();
         }
     }
 
@@ -148,5 +152,6 @@ final class Builder
         $this->log[] = $operation->sql();
 
         $this->db->execute($operation->sql());
+        $this->db->forgetTableCache();
     }
 }

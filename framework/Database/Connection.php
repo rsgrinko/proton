@@ -43,6 +43,17 @@ final class Connection
     private array $config;
 
     /**
+     * hasTable() спрашивают на каждый чих (Settings, уведомления, кэш, —
+     * у каждой необязательной таблицы свой independent-охранник), и без кэша
+     * это отдельный поход в information_schema на каждый вызов. Схема внутри
+     * одного запроса не меняется, а миграции (единственное, что её меняет)
+     * сбрасывают кэш сами через forgetTableCache().
+     *
+     * @var array<string, bool>
+     */
+    private array $tableExists = [];
+
+    /**
      * @param array<string, mixed>|null $config блок 'db' конфигурации
      */
     public function __construct(?array $config = null)
@@ -332,17 +343,30 @@ final class Connection
 
     public function hasTable(string $table): bool
     {
+        if (array_key_exists($table, $this->tableExists)) {
+            return $this->tableExists[$table];
+        }
+
         if ($this->isSqlite()) {
-            return $this->selectOne(
+            return $this->tableExists[$table] = $this->selectOne(
                 "SELECT name FROM sqlite_master WHERE type = 'table' AND name = :name",
                 ['name' => $table]
             ) !== null;
         }
 
-        return $this->selectOne(
+        return $this->tableExists[$table] = $this->selectOne(
             'SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = :name',
             ['name' => $table]
         ) !== null;
+    }
+
+    /**
+     * Сбросить кэш hasTable() — зовут только шаги схемы (создание, изменение,
+     * удаление таблицы), сразу после того, как DDL действительно выполнился.
+     */
+    public function forgetTableCache(): void
+    {
+        $this->tableExists = [];
     }
 
     /**
