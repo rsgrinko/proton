@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Rsgrinko\Proton\Support;
 
 use Rsgrinko\Proton\Cache\Cache;
+use Rsgrinko\Proton\Database\Connection;
 use Rsgrinko\Proton\Models\AuditEntry;
 use Rsgrinko\Proton\Models\User;
 use Rsgrinko\Proton\Models\UserNotification;
@@ -193,14 +194,37 @@ final class Metrics
      */
     public static function storage(): array
     {
-        $database = (string) Config::get('db.sqlite.path', APP_ROOT . '/var/app.sqlite');
-        $free     = @disk_free_space(APP_ROOT);
+        $free = @disk_free_space(APP_ROOT);
 
         return [
-            'database_bytes' => is_file($database) ? (int) filesize($database) : 0,
+            'database_bytes' => self::databaseBytes(),
             'var_bytes'      => self::size(APP_ROOT . '/var'),
             'free_bytes'     => $free === false ? 0 : (int) $free,
         ];
+    }
+
+    /**
+     * Размер базы: у SQLite это файл целиком, у MySQL — сумма данных и индексов
+     * по своей схеме by information_schema (сам файл базы MySQL тут не при чём —
+     * это общий для всех баз сервера кластер).
+     */
+    private static function databaseBytes(): int
+    {
+        $db = Connection::instance();
+
+        if ($db->isSqlite()) {
+            $path = (string) Config::get('db.sqlite.path', APP_ROOT . '/var/app.sqlite');
+
+            return is_file($path) ? (int) filesize($path) : 0;
+        }
+
+        $row = $db->selectOne(
+            'SELECT SUM(data_length + index_length) AS bytes
+                FROM information_schema.tables
+                WHERE table_schema = DATABASE()'
+        );
+
+        return $row === null || $row['bytes'] === null ? 0 : (int) $row['bytes'];
     }
 
     /**
