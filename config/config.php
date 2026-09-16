@@ -147,6 +147,19 @@ return [
         'keep' => Env::int('BACKUP_KEEP', 7),
         // Во сколько делать копию каждый день («03:30»); пусто — не делать
         'schedule' => Env::string('BACKUP_SCHEDULE', ''),
+
+        // Копия дополнительно уезжает на FTP, если задан хост — диск с базой
+        // и диск с копиями в идеале разные, а локальный var/backups для
+        // этого не годится. Пассивный режим, без TLS
+        'ftp' => [
+            'host'     => Env::string('FTP_HOST', ''),
+            'port'     => Env::int('FTP_PORT', 21),
+            'username' => Env::string('FTP_USER', ''),
+            'password' => Env::string('FTP_PASSWORD', ''),
+            // Каталог на сервере; пусто — корень учётной записи
+            'path'     => Env::string('FTP_PATH', ''),
+            'timeout'  => Env::int('FTP_TIMEOUT', 30),
+        ],
     ],
 
     'queue' => [

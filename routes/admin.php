@@ -93,6 +93,7 @@ return static function (Router $router): void {
             $router->post('', [BackupsController::class, 'store'])->name('admin.backups.store');
             $router->post('/download', [BackupsController::class, 'download'])->name('admin.backups.download');
             $router->post('/check', [BackupsController::class, 'check'])->name('admin.backups.check');
+            $router->post('/ship', [BackupsController::class, 'ship'])->name('admin.backups.ship');
             $router->post('/delete', [BackupsController::class, 'delete'])->name('admin.backups.delete');
         });
 

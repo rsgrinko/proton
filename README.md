@@ -49,7 +49,7 @@ php bin/proton help         # все команды
 | Почта | `mail()`, SMTP, внешний сервис по HTTP, запись в файл, заглушка для тестов |
 | Вебхуки | подписки на события, подпись посылок, повторы, журнал доставок |
 | Уведомления | лента в приложении и письма, адресация по праву |
-| Копии базы | создание с проверкой, ротация, расписание, восстановление из консоли |
+| Копии базы | создание с проверкой, ротация, расписание, отправка на FTP, восстановление из консоли |
 | Списки | фильтры, сортировка и постраничная навигация одним описанием, выгрузка и загрузка CSV |
 | Показатели | отчёты за период, счётчики запросов, снимок для мониторинга, присмотр за порогами |
 | Прочее | контейнер зависимостей, кэш, события, модельные события (saving/created/deleted…), загрузка файлов, журнал действий, свой логгер, самодиагностика |
@@ -161,7 +161,7 @@ framework/            ядро, namespace Rsgrinko\Proton\ — меняется 
   Mail/               Message, Mime, Drivers/ (mail, smtp, mailer, log, null)
   Webhooks/           реестр событий, рассылка, доставка с повторами
   Notifications/      Notification, Notify (лента и письмо)
-  Backup/             копии базы: создание, проверка, ротация
+  Backup/             копии базы: создание, проверка, ротация, отправка на FTP
   Cache/  Events/  Files/  RateLimit/  View/  Console/  Install/
 
 app/                  код приложения, namespace App\
@@ -201,7 +201,7 @@ php bin/proton user:create | user:list | user:password | role:list
 php bin/proton key:create | key:list | key:revoke
 php bin/proton mail:test you@example.com
 php bin/proton webhook:list [--events] | webhook:test <id>
-php bin/proton backup:create | backup:list [--check] | backup:restore <файл> --force
+php bin/proton backup:create | backup:list [--check] | backup:restore <файл> --force | backup:ship <файл>
 php bin/proton make:crud | make:model | make:controller | make:migration | make:job | make:command | make:test
 php bin/proton status | route:list | cache:clear | logs:purge | app:key | seed
 ```

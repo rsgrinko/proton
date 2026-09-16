@@ -7,6 +7,7 @@ namespace Rsgrinko\Proton\Backup;
 use Rsgrinko\Proton\Access\Permission;
 use Rsgrinko\Proton\Notifications\Notify;
 use Rsgrinko\Proton\Queue\Job;
+use Rsgrinko\Proton\Queue\Queue;
 use Rsgrinko\Proton\Support\Logger;
 
 /**
@@ -41,6 +42,12 @@ final class BackupJob extends Job
             'size'    => $info['size'],
             'removed' => $removed,
         ]);
+
+        // Отправка на FTP — своя задача: сеть до чужого сервера не должна
+        // держать дамп, который и так уже готов и годен локально
+        if (Ftp::enabled()) {
+            Queue::push(ShipBackupJob::class, ['name' => $info['name']]);
+        }
     }
 
     /**

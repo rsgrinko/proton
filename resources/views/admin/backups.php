@@ -9,6 +9,7 @@ declare(strict_types=1);
  * @var int $keep сколько копий держим
  * @var string $schedule время ежедневной копии или пусто
  * @var string $dir каталог с копиями
+ * @var bool $ftp задан ли FTP для отправки копий
  */
 
 use Rsgrinko\Proton\Backup\Backup;
@@ -39,6 +40,16 @@ use Rsgrinko\Proton\View\View;
                     каждый день в <?= View::e($schedule) ?> (делает воркер)
                 <?php } else { ?>
                     <span class="muted">выключено — задайте <span class="mono">BACKUP_SCHEDULE</span> в .env</span>
+                <?php } ?>
+            </td>
+        </tr>
+        <tr>
+            <th>Отправка на FTP</th>
+            <td>
+                <?php if ($ftp) { ?>
+                    включена — свежая копия по расписанию уезжает сама, старые можно отправить кнопкой
+                <?php } else { ?>
+                    <span class="muted">выключено — задайте <span class="mono">FTP_HOST</span> в .env</span>
                 <?php } ?>
             </td>
         </tr>
@@ -90,6 +101,14 @@ use Rsgrinko\Proton\View\View;
                                     <input type="hidden" name="name" value="<?= View::e($file['name']) ?>">
                                     <button type="submit">Проверить</button>
                                 </form>
+
+                                <?php if ($ftp) { ?>
+                                    <form method="post" action="<?= View::e(View::route('admin.backups.ship')) ?>">
+                                        <?= View::csrf() ?>
+                                        <input type="hidden" name="name" value="<?= View::e($file['name']) ?>">
+                                        <button type="submit">Отправить на FTP</button>
+                                    </form>
+                                <?php } ?>
 
                                 <form method="post" action="<?= View::e(View::route('admin.backups.delete')) ?>">
                                     <?= View::csrf() ?>

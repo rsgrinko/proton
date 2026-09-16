@@ -10,9 +10,14 @@ declare(strict_types=1);
  */
 
 use Rsgrinko\Proton\Backup\Backup;
+use Rsgrinko\Proton\Backup\BackupJob;
+use Rsgrinko\Proton\Backup\ShipBackupJob;
 use Rsgrinko\Proton\Database\Connection;
 use Rsgrinko\Proton\Database\Migrator;
+use Rsgrinko\Proton\Models\Role;
 use Rsgrinko\Proton\Models\Setting;
+use Rsgrinko\Proton\Models\User;
+use Rsgrinko\Proton\Models\UserNotification;
 use Rsgrinko\Proton\Support\Config;
 use Rsgrinko\Proton\Support\ProtonException;
 
@@ -201,8 +206,86 @@ test('копии: расписание включается настройкой
         }
     });
 
-    // Соседям расписание нужно в исходном виде
     Rsgrinko\Proton\Queue\Scheduler::reset();
+});
+
+test('заметки: пересчёт slug по расписанию выключен, пока не задан NOTES_SLUG_RESYNC', function (): void {
+    putenv('NOTES_SLUG_RESYNC');
+    Rsgrinko\Proton\Queue\Scheduler::reset();
+
+    $names = array_column(Rsgrinko\Proton\Queue\Scheduler::tasks(), 'name');
+
+    assertFalse(in_array('notes:rebuild-slugs', $names, true), 'без переменной задача не планируется');
+
+    putenv('NOTES_SLUG_RESYNC=true');
+    Rsgrinko\Proton\Queue\Scheduler::reset();
+
+    $names = array_column(Rsgrinko\Proton\Queue\Scheduler::tasks(), 'name');
+
+    assertTrue(in_array('notes:rebuild-slugs', $names, true), 'с переменной — задача появилась');
+
+    putenv('NOTES_SLUG_RESYNC');
+    Rsgrinko\Proton\Queue\Scheduler::reset();
+});
+
+test('копии: FTP не настроен — отправка не ставится в очередь', function (): void {
+    withBackupSandbox(static function (): void {
+        withConfig(['backup.ftp.host' => ''], static function (): void {
+            (new BackupJob())->handle([]);
+
+            $queued = Connection::instance()->select(
+                "SELECT COUNT(*) AS n FROM jobs WHERE job_class = :c",
+                ['c' => ShipBackupJob::class]
+            );
+
+            assertSame(0, (int) $queued[0]['n']);
+        });
+    });
+});
+
+test('копии: FTP настроен — после копии отправка ставится в очередь', function (): void {
+    withBackupSandbox(static function (): void {
+        withConfig(['backup.ftp.host' => 'ftp.example.com'], static function (): void {
+            (new BackupJob())->handle([]);
+
+            $queued = Connection::instance()->select(
+                "SELECT payload FROM jobs WHERE job_class = :c",
+                ['c' => ShipBackupJob::class]
+            );
+
+            assertCount(1, $queued);
+
+            $payload = (array) json_decode((string) $queued[0]['payload'], true);
+
+            assertMatches('/^proton-.*\.sqlite\.gz$/', (string) $payload['name']);
+        });
+    });
+});
+
+test('ShipBackupJob: без имени в задаче — понятная ошибка, а не падение', function (): void {
+    $error = assertThrows(static fn () => (new ShipBackupJob())->handle([]));
+
+    assertTrue($error instanceof ProtonException);
+    assertContains('нет имени копии', $error->getMessage());
+});
+
+test('ShipBackupJob: не отправилась — уведомление тем, у кого system.manage', function (): void {
+    withOwnDatabase(static function (): void {
+        $admin = User::register('ship_admin', 'секрет123', [
+            'email'   => 'ship_admin@example.com',
+            'role_id' => Role::admin()?->id() ?? 0,
+        ]);
+
+        (new ShipBackupJob())->failed(['name' => 'proton-test.sqlite.gz'], 'сервер не ответил');
+
+        assertSame(1, UserNotification::unreadFor($admin->id()));
+
+        $notification = assertNotNull(
+            UserNotification::query()->where('user_id', $admin->id())->orderBy('id', 'desc')->first()
+        );
+
+        assertSame('backup.ship_failed', $notification->raw('type'));
+    });
 });
 
 test('копии: размер показывается по-человечески', function (): void {

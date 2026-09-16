@@ -5,9 +5,12 @@ declare(strict_types=1);
 namespace App\Controllers\Admin;
 
 use Rsgrinko\Proton\Backup\Backup;
+use Rsgrinko\Proton\Backup\Ftp;
+use Rsgrinko\Proton\Backup\ShipBackupJob;
 use Rsgrinko\Proton\Http\Controller;
 use Rsgrinko\Proton\Http\Request;
 use Rsgrinko\Proton\Http\Response;
+use Rsgrinko\Proton\Queue\Queue;
 use Rsgrinko\Proton\Support\Audit;
 use Rsgrinko\Proton\Support\Config;
 use Rsgrinko\Proton\Support\ProtonException;
@@ -38,6 +41,7 @@ final class BackupsController extends Controller
             'keep'     => (int) Config::get('backup.keep', 7),
             'schedule' => trim((string) Config::get('backup.schedule', '')),
             'dir'      => Backup::directory(),
+            'ftp'      => Ftp::enabled(),
         ], 'Резервные копии');
     }
 
@@ -102,6 +106,33 @@ final class BackupsController extends Controller
             ($result['ok'] ? 'Копия годна — ' : 'Копия негодна: ') . $result['message'],
             $result['ok'] ? 'ok' : 'error'
         );
+
+        return $this->redirect('admin.backups');
+    }
+
+    /**
+     * Ставит отправку на FTP в очередь — так же, как обычная копия, эта не
+     * должна держать страницу, пока идёт по сети до чужого сервера.
+     */
+    public function ship(Request $request): Response
+    {
+        $name = $this->name($request);
+
+        if ($name === '') {
+            return $this->redirect('admin.backups');
+        }
+
+        if (!Ftp::enabled()) {
+            $this->flash('FTP не настроен: задайте FTP_HOST в .env', 'error');
+
+            return $this->redirect('admin.backups');
+        }
+
+        Queue::push(ShipBackupJob::class, ['name' => $name]);
+
+        Audit::action('backup', $name, 'копия поставлена в очередь на отправку по FTP');
+
+        $this->flash('Отправка поставлена в очередь — заберёт воркер');
 
         return $this->redirect('admin.backups');
     }

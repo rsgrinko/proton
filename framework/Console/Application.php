@@ -76,6 +76,7 @@ final class Application
             Commands\BackupCreateCommand::class,
             Commands\BackupListCommand::class,
             Commands\BackupRestoreCommand::class,
+            Commands\BackupShipCommand::class,
         ],
         'Вебхуки' => [
             Commands\WebhookListCommand::class,

@@ -100,7 +100,7 @@ framework/            ядро, namespace Rsgrinko\Proton\
                       SendMailJob
   Webhooks/           Webhooks (реестр событий и рассылка), DeliverWebhookJob
   Notifications/      Notification, Notify, уведомления ядра
-  Backup/             копии базы: создание, проверка, ротация, восстановление
+  Backup/             копии базы: создание, проверка, ротация, восстановление, отправка на FTP
   Install/            Installer — общий движок установки для консоли и веба
   Cache/  Events/  Files/  RateLimit/  View/  Console/
 
@@ -227,8 +227,10 @@ action()`. Секреты в журнал не пишутся, `Audit::between()
 **Копии базы** (`Backup`) — без внешних утилит: SQLite через `VACUUM INTO`, MySQL
 своим дампом на запросах, файл сразу сжимается и **проверяется** (негодный не
 сохраняется). Расписание включается `BACKUP_SCHEDULE`, ротацию держит `BACKUP_KEEP`.
-Восстановление — только из консоли с `--force`, и перед заменой делается
-страховочная копия текущего состояния.
+Если задан `FTP_HOST`, свежая копия дополнительно уезжает на FTP отдельной задачей
+очереди (`ShipBackupJob`) — свой клиент на потоках (`Ftp`), как SMTP-клиент у почты,
+пассивный режим, без TLS. Восстановление — только из консоли с `--force`, и перед
+заменой делается страховочная копия текущего состояния.
 
 **Адрес для письма** — `Router::absolute('имя', [...])`: путь без домена в письме не
 кликается. Роутер поднимается сам и вне запроса (`Router::boot()`), иначе задача
@@ -302,6 +304,7 @@ php bin/proton webhook:test <id>     пробная посылка подпис�
 php bin/proton backup:create          копия базы с проверкой
 php bin/proton backup:list [--check]  список копий
 php bin/proton backup:restore <файл> --force   восстановление (крайняя мера)
+php bin/proton backup:ship <файл> [--queue]    отправить копию на FTP
 php bin/proton status                самопроверка
 php bin/proton route:list|cache:clear|logs:purge|app:key|seed
 ```

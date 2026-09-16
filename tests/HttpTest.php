@@ -297,6 +297,15 @@ test('http: лимит заметок на пользователя провер
     });
 });
 
+test('http: отправка копии на FTP из панели требует настроенного хоста', function (): void {
+    assertStatus(403, httpRequest('POST', '/admin/backups/ship', httpUser(), ['name' => 'proton-x.sqlite.gz']));
+
+    $response = httpRequest('POST', '/admin/backups/ship', httpAdmin(), ['name' => 'proton-x.sqlite.gz']);
+
+    assertStatus(302, $response);
+    assertContains('/admin/backups', $response->header('Location'));
+});
+
 test('http: накат миграций из панели доступен только с system.manage', function (): void {
     assertStatus(403, httpRequest('POST', '/admin/system/migrate', httpUser()));
 
