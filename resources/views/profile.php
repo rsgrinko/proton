@@ -3,13 +3,16 @@
 declare(strict_types=1);
 
 /**
- * Свой профиль: данные, пароль и устройства.
+ * Свой профиль: данные, свои поля, пароль и устройства.
  *
  * @var \Rsgrinko\Proton\Models\User $user
+ * @var array<int, \Rsgrinko\Proton\Models\UserField> $fields свои поля профиля — заведены в панели
+ * @var array<int, string> $metaValues значения своих полей: id поля => значение
  * @var array<int, array{id: string, kind: string, ip: string, agent: string, created: string, last: string, current: bool}> $devices
  */
 
 use Rsgrinko\Proton\Auth\Password;
+use Rsgrinko\Proton\Models\UserField;
 use Rsgrinko\Proton\View\View;
 ?>
 <h1>Профиль</h1>
@@ -60,6 +63,38 @@ use Rsgrinko\Proton\View\View;
                 <span>О себе</span>
                 <textarea name="bio" style="min-height: 70px;"><?= View::e((string) $user->bio) ?></textarea>
             </label>
+
+            <?php foreach ($fields as $field) { ?>
+                <?php $name = 'meta_' . $field->id(); ?>
+                <?php $value = $metaValues[$field->id()] ?? ''; ?>
+
+                <?php if ((string) $field->type === UserField::BOOLEAN) { ?>
+                    <label class="inline" style="margin-bottom: 12px;">
+                        <input type="checkbox" name="<?= $name ?>" value="1" <?= $value === '1' ? 'checked' : '' ?>>
+                        <span><?= View::e((string) $field->label) ?></span>
+                    </label>
+                <?php } else { ?>
+                    <label>
+                        <span><?= View::e((string) $field->label) ?></span>
+
+                        <?php if ((string) $field->type === UserField::TEXT) { ?>
+                            <textarea name="<?= $name ?>"><?= View::e($value) ?></textarea>
+                        <?php } else { ?>
+                            <?php $inputType = match ((string) $field->type) {
+                                UserField::NUMBER => 'number',
+                                UserField::URL    => 'url',
+                                UserField::DATE   => 'date',
+                                default           => 'text',
+                            }; ?>
+                            <input type="<?= $inputType ?>" name="<?= $name ?>" value="<?= View::e($value) ?>">
+                        <?php } ?>
+
+                        <?php if ((string) $field->description !== '') { ?>
+                            <span class="muted small"><?= View::e((string) $field->description) ?></span>
+                        <?php } ?>
+                    </label>
+                <?php } ?>
+            <?php } ?>
 
             <button type="submit" class="primary">Сохранить</button>
         </form>

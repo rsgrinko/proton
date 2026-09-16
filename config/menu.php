@@ -18,6 +18,7 @@ return [
     ['key' => 'notes',     'label' => 'Заметки',      'route' => 'notes.index',     'permission' => 'notes.view'],
     ['key' => 'dashboard', 'label' => 'Панель',       'route' => 'admin.dashboard', 'permission' => Permission::SYSTEM_VIEW],
     ['key' => 'users',     'label' => 'Пользователи', 'route' => 'admin.users',     'permission' => Permission::USERS_MANAGE],
+    ['key' => 'user-fields', 'label' => 'Поля профиля', 'route' => 'admin.userFields', 'permission' => Permission::USERS_MANAGE],
     ['key' => 'roles',     'label' => 'Роли',         'route' => 'admin.roles',     'permission' => Permission::ROLES_MANAGE],
     ['key' => 'tokens',    'label' => 'Ключи API',    'route' => 'admin.tokens',    'permission' => Permission::USERS_MANAGE],
     ['key' => 'webhooks',  'label' => 'Вебхуки',      'route' => 'admin.webhooks',  'permission' => Permission::WEBHOOKS_MANAGE],

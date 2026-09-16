@@ -22,6 +22,7 @@ use App\Controllers\Admin\SettingsController;
 use App\Controllers\Admin\SystemController;
 use App\Controllers\Admin\TokensController;
 use App\Controllers\Admin\TrashController;
+use App\Controllers\Admin\UserFieldsController;
 use App\Controllers\Admin\UsersController;
 use App\Controllers\Admin\WebhooksController;
 use Rsgrinko\Proton\Access\Permission;
@@ -55,6 +56,15 @@ return static function (Router $router): void {
         // а вернуться в свою сессию нужно всегда
         $router->post('/impersonate/stop', [UsersController::class, 'stopImpersonating'])
             ->name('admin.impersonate.stop');
+
+        $router->group(['prefix' => '/user-fields', 'middleware' => 'can:' . Permission::USERS_MANAGE], function (Router $router): void {
+            $router->get('', [UserFieldsController::class, 'index'])->name('admin.userFields');
+            $router->get('/new', [UserFieldsController::class, 'create'])->name('admin.userFields.create');
+            $router->post('/new', [UserFieldsController::class, 'store']);
+            $router->get('/{id:\d+}', [UserFieldsController::class, 'show'])->name('admin.userFields.show');
+            $router->post('/{id:\d+}', [UserFieldsController::class, 'update']);
+            $router->post('/{id:\d+}/delete', [UserFieldsController::class, 'delete'])->name('admin.userFields.delete');
+        });
 
         $router->group(['prefix' => '/roles', 'middleware' => 'can:' . Permission::ROLES_MANAGE], function (Router $router): void {
             $router->get('', [RolesController::class, 'index'])->name('admin.roles');

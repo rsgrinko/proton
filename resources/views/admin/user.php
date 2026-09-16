@@ -7,11 +7,14 @@ declare(strict_types=1);
  *
  * @var \Rsgrinko\Proton\Models\User $user
  * @var array<int, \Rsgrinko\Proton\Models\Role> $roles
+ * @var array<int, \Rsgrinko\Proton\Models\UserField> $fields свои поля профиля — заведены в панели
+ * @var array<int, string> $metaValues значения своих полей: id поля => значение
  * @var array<int, array{id: string, kind: string, ip: string, agent: string, created: string, last: string, current: bool}> $devices
  */
 
 use Rsgrinko\Proton\Access\Permission;
 use Rsgrinko\Proton\Auth\Password;
+use Rsgrinko\Proton\Models\UserField;
 use Rsgrinko\Proton\View\View;
 
 $isNew  = !$user->existsInDatabase();
@@ -89,6 +92,22 @@ $hint   = $isNew ? 'пусто — придумаем сами' : 'пусто �
 
             <dt>О себе</dt>
             <dd><?= $user->bio !== '' ? nl2br(View::e((string) $user->bio)) : '<span class="muted">—</span>' ?></dd>
+
+            <?php foreach ($fields as $field) { ?>
+                <?php $value = $metaValues[$field->id()] ?? ''; ?>
+                <dt><?= View::e((string) $field->label) ?></dt>
+                <dd>
+                    <?php if ($value === '') { ?>
+                        <span class="muted">—</span>
+                    <?php } elseif ((string) $field->type === UserField::BOOLEAN) { ?>
+                        <?= $value === '1' ? 'да' : 'нет' ?>
+                    <?php } elseif ((string) $field->type === UserField::URL) { ?>
+                        <a href="<?= View::e($value) ?>" target="_blank" rel="noopener"><?= View::e($value) ?></a>
+                    <?php } else { ?>
+                        <?= nl2br(View::e($value)) ?>
+                    <?php } ?>
+                </dd>
+            <?php } ?>
         </dl>
     </div>
 

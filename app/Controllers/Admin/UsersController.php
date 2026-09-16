@@ -12,6 +12,8 @@ use Rsgrinko\Proton\Http\Request;
 use Rsgrinko\Proton\Http\Response;
 use Rsgrinko\Proton\Models\Role;
 use Rsgrinko\Proton\Models\User;
+use Rsgrinko\Proton\Models\UserField;
+use Rsgrinko\Proton\Models\UserFieldValue;
 use Rsgrinko\Proton\Support\Audit;
 use Rsgrinko\Proton\Support\Config;
 use Rsgrinko\Proton\Support\Filter;
@@ -131,10 +133,12 @@ final class UsersController extends Controller
         $user = $this->require(User::find($id), 'admin.users', 'Пользователь не найден');
 
         return $this->view('admin/user', [
-            'active'  => 'users',
-            'user'    => $user,
-            'roles'   => Role::all(),
-            'devices' => Devices::of($user->id()),
+            'active'     => 'users',
+            'user'       => $user,
+            'roles'      => Role::all(),
+            'devices'    => Devices::of($user->id()),
+            'fields'     => UserField::allOrdered(),
+            'metaValues' => UserFieldValue::valuesFor($user->id()),
         ], (string) $user->login);
     }
 
