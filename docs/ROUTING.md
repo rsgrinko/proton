@@ -43,12 +43,45 @@ return static function (Router $router): void {
 | `throttle:120,60` | не больше 120 запросов за 60 секунд |
 | `setup` | страница первого запуска, пока в базе нет пользователей |
 
-Своя прослойка — класс с методом `__invoke(Request $request, callable $next): Response`
-плюс строка в ядре:
+Своя прослойка — класс с методом `__invoke(Request $request, callable $next): Response`,
+зарегистрированный по имени. Ядро трогать не нужно: `$router` в файле маршрутов —
+тот же самый роутер, что и в `Kernel`, поэтому регистрация ложится в начало
+`routes/web.php` (или своего файла из `config/config.php`), рядом с маршрутами,
+которые её используют:
 
 ```php
-$router->middleware('audit', new AuditMiddleware());
+final class AuditMiddleware
+{
+    public function __invoke(Request $request, callable $next): Response
+    {
+        $started = microtime(true);
+
+        $response = $next($request);
+
+        (new Logger('audit'))->info('Запрос', [
+            'path'   => $request->path,
+            'ms'     => round((microtime(true) - $started) * 1000, 1),
+            'status' => $response->status(),
+        ]);
+
+        return $response;
+    }
+}
 ```
+
+```php
+return static function (Router $router): void {
+    $router->middleware('audit', new AuditMiddleware());
+
+    $router->group(['prefix' => '/admin', 'middleware' => ['csrf', 'auth', 'audit']], function (Router $router): void {
+        // …
+    });
+};
+```
+
+Прослойка с аргументом (`audit:orders`) получает его третьим параметром
+`__invoke(Request $request, callable $next, string $argument = '')` — так
+собран `can:право` и `throttle:120,60`.
 
 Право проверяется прослойкой, а не в контроллере: так забыть его можно только
 вместе со всей группой.

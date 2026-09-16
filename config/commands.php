@@ -9,6 +9,9 @@ declare(strict_types=1);
  * Создать заготовку: php bin/proton make:command Имя
  */
 
+use App\Commands\NotesSeedCommand;
+
 return [
-    // App\Commands\ПримерCommand::class,
+    // Пример своей команды — заводит демо-заметки для проверки списка
+    NotesSeedCommand::class,
 ];

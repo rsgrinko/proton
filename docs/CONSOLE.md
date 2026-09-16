@@ -125,7 +125,10 @@ $u->email'
 ## Своя команда
 
 Класс в `app/Commands` плюс строка в реестре `config/commands.php` — иначе команда
-не появится ни в справке, ни в разборе аргументов.
+не появится ни в справке, ни в разборе аргументов. Живой пример в приложении —
+`app/Commands/NotesSeedCommand.php` (`php bin/proton notes:seed <логин> [--count=]`):
+заводит демонстрационные заметки, чтобы на пустой базе было на чём проверить
+список, фильтры и страницы.
 
 ```php
 final class ImportOrdersCommand extends Command
