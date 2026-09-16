@@ -284,6 +284,30 @@ test('http: форма с токеном создаёт запись и пише
     assertNotNull($entry, 'действие должно попасть в журнал');
 });
 
+test('http: лимит заметок на пользователя проверяется через контейнер (NoteLimiter)', function (): void {
+    withConfig(['notes.per_user' => 1], static function (): void {
+        $before = Note::query()->where('user_id', httpUser()->id())->count();
+
+        Note::create(['title' => 'Первая'])->forceFill(['user_id' => httpUser()->id()])->save();
+
+        $response = httpRequest('POST', '/notes/new', httpUser(), ['title' => 'Вторая по счёту']);
+
+        assertStatus(302, $response);
+        assertSame($before + 1, Note::query()->where('user_id', httpUser()->id())->count(), 'сверх лимита запись не завелась');
+    });
+});
+
+test('http: накат миграций из панели доступен только с system.manage', function (): void {
+    assertStatus(403, httpRequest('POST', '/admin/system/migrate', httpUser()));
+
+    // Тестовая база уже накатана целиком раннером — новых миграций нет,
+    // но сама кнопка должна отработать и не уронить страницу
+    $response = httpRequest('POST', '/admin/system/migrate', httpAdmin());
+
+    assertStatus(302, $response);
+    assertContains('/admin/system', $response->header('Location'));
+});
+
 test('http: неверные данные возвращают человека на форму', function (): void {
     $response = httpRequest('POST', '/notes/new', httpAdmin(), ['title' => '']);
 

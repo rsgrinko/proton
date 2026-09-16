@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Controllers\Admin;
 
 use Rsgrinko\Proton\Cache\Cache;
+use Rsgrinko\Proton\Database\Migrator;
 use Rsgrinko\Proton\Events\Events;
 use Rsgrinko\Proton\Http\Controller;
 use Rsgrinko\Proton\Http\Request;
@@ -16,6 +17,7 @@ use Rsgrinko\Proton\Queue\Worker;
 use Rsgrinko\Proton\Support\Audit;
 use Rsgrinko\Proton\Support\Diagnostics;
 use Rsgrinko\Proton\Support\Metrics;
+use Throwable;
 
 /**
  * Состояние: самопроверка, очередь, расписание и кнопки обслуживания.
@@ -40,6 +42,7 @@ final class SystemController extends Controller
             'schedule' => Scheduler::tasks(),
             'events'   => Events::registered(),
             'settings' => Setting::all(),
+            'pending'  => (new Migrator())->pending(),
             'php'      => PHP_VERSION,
         ], 'Состояние');
     }
@@ -107,6 +110,25 @@ final class SystemController extends Controller
                 Audit::action('system', 0, 'вручную выполнено расписание: ' . implode(', ', $done));
 
                 $this->flash($done === [] ? 'Задач, которым пора, нет' : 'Выполнено: ' . implode(', ', $done));
+
+                break;
+
+            case 'migrate':
+                try {
+                    $applied = (new Migrator())->run();
+                } catch (Throwable $e) {
+                    // Накат мог упасть на середине — сообщаем как есть, самопроверка
+                    // на этой же странице покажет, что осталось не применённым
+                    Audit::action('system', 0, 'накат миграций из панели не удался: ' . $e->getMessage());
+
+                    $this->flash('Не применились: ' . $e->getMessage(), 'error');
+
+                    break;
+                }
+
+                Audit::action('system', 0, $applied === [] ? 'накат миграций из панели: новых нет' : 'применены миграции: ' . implode(', ', $applied));
+
+                $this->flash($applied === [] ? 'Новых миграций нет' : 'Применены: ' . implode(', ', $applied));
 
                 break;
 

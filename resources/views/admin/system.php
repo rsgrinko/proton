@@ -13,6 +13,7 @@ declare(strict_types=1);
  * @var array<int, array{name: string, interval: int, at: string, last: string}> $schedule
  * @var array<string, int> $events
  * @var array<string, string> $settings
+ * @var array<int, string> $pending
  * @var string $php
  */
 
@@ -178,6 +179,13 @@ $labels = [Diagnostics::OK => 'в порядке', Diagnostics::WARN => 'вни�
                     <?= View::csrf() ?>
                     <button type="submit">Очистить кэш</button>
                 </form>
+
+                <?php if ($pending !== []) { ?>
+                    <form method="post" action="<?= View::e(View::route('admin.system.action', ['action' => 'migrate'])) ?>">
+                        <?= View::csrf() ?>
+                        <button type="submit" data-confirm="Применить миграции (<?= count($pending) ?>)? Схема базы изменится.">Применить миграции (<?= count($pending) ?>)</button>
+                    </form>
+                <?php } ?>
             </div>
         <?php } else { ?>
             <p class="muted small">Кнопки обслуживания доступны с правом system.manage.</p>
