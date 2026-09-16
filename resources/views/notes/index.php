@@ -67,7 +67,7 @@ $planFile = (string) View::takeStash('import_file', '');
 
                     <?php foreach ($plan->sample as $row) { ?>
                         <tr>
-                            <td class="muted small"><?= (int) $row['line'] ?></td>
+                            <td class="muted small" data-label="Строка"><?= (int) $row['line'] ?></td>
                             <td>
                                 <span class="badge <?= $row['verdict'] === ImportPlan::SKIP ? 'error' : ($row['verdict'] === ImportPlan::UPDATE ? 'warn' : 'ok') ?>">
                                     <?= View::e(ImportPlan::label((string) $row['verdict'])) ?>

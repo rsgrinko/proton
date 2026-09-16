@@ -29,7 +29,7 @@ $export = $export ?? '';
 
         <div class="filters">
             <?php foreach ($filters->fields() as $field) { ?>
-                <label>
+                <label class="<?= $field->type === Filter::DATES ? 'dates' : '' ?>">
                     <span><?= View::e($field->label) ?></span>
 
                     <?php if ($field->type === Filter::SEARCH) { ?>

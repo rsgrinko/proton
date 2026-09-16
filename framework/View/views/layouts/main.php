@@ -356,6 +356,10 @@ $unread = $viewer->isGuest() ? 0 : UserNotification::unreadFor($viewer->id());
 
             .filters { grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; }
             .row > label { min-width: 100%; }
+            /* Пара дат в одну колонку не влезает — калькулятор ширины съедает
+               иконку и цифры года; отдаём фильтру дат всю ширину строки */
+            .filters label.dates { grid-column: 1 / -1; }
+            .filters .range input { min-width: 0; }
 
             th, td { padding: 6px 8px; }
 
@@ -370,6 +374,14 @@ $unread = $viewer->isGuest() ? 0 : UserNotification::unreadFor($viewer->id());
             table.list tr:last-child { border-bottom: none; padding-bottom: 0; }
             table.list td { border: none; padding: 2px 0; }
             table.list td:empty { display: none; }
+
+            /* Шапка таблицы пропадает вместе со столбцами — голое число или
+               слово без неё непонятно само по себе. Там, где это важно,
+               ячейка несёт название колонки в data-label */
+            table.list td[data-label]::before {
+                content: attr(data-label) ": ";
+                color: var(--muted);
+            }
 
             dl.props { grid-template-columns: 1fr; gap: 0; }
             dl.props dt { margin-top: 10px; font-size: 12px; }

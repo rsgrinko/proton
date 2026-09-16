@@ -125,8 +125,8 @@ $badges = [
                                     <div class="muted small break"><?= View::e(mb_substr((string) $job['error'], 0, 200)) ?></div>
                                 <?php } ?>
                             </td>
-                            <td class="small"><?= View::e((string) $job['queue']) ?></td>
-                            <td class="small"><?= (int) ($job['priority'] ?? 0) ?></td>
+                            <td class="small" data-label="Очередь"><?= View::e((string) $job['queue']) ?></td>
+                            <td class="small" data-label="Важность"><?= (int) ($job['priority'] ?? 0) ?></td>
                             <td><span class="badge <?= View::e($badges[$status] ?? 'muted') ?>"><?= View::e($statuses[$status] ?? $status) ?></span></td>
                             <td class="hide-sm small"><?= (int) $job['attempts'] ?> из <?= (int) $job['max_attempts'] ?></td>
                             <td class="hide-sm small"><?= $job['duration_ms'] !== null ? (int) $job['duration_ms'] . ' мс' : '—' ?></td>

@@ -163,7 +163,7 @@ $all      = in_array(Webhook::ALL_EVENTS, $selected, true);
 
                     <?php foreach ($deliveries['items'] as $delivery) { ?>
                         <tr>
-                            <td class="mono"><?= $delivery->id() ?></td>
+                            <td class="mono" data-label="№"><?= $delivery->id() ?></td>
                             <td class="mono small"><?= View::e((string) $delivery->raw('event')) ?></td>
                             <td>
                                 <?php if ((string) $delivery->raw('status') === WebhookDelivery::SENT) { ?>

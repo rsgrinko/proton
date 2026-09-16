@@ -39,8 +39,8 @@ use Rsgrinko\Proton\View\View;
                         <?php if ($role->isSystem()) { ?><span class="badge info">встроенная</span><?php } ?>
                     </td>
                     <td class="hide-sm muted small"><?= View::e((string) $role->description) ?></td>
-                    <td><?= count($role->permissions()) ?></td>
-                    <td><?= $role->usersCount() ?></td>
+                    <td data-label="Прав"><?= count($role->permissions()) ?></td>
+                    <td data-label="Пользователей"><?= $role->usersCount() ?></td>
                 </tr>
             <?php } ?>
         </table>
