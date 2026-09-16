@@ -17,7 +17,10 @@ test('роутер: простой маршрут и 404', function (): void {
     $router->get('/hello', static fn (): Response => Response::text('привет'));
 
     assertSame('привет', $router->dispatch(Request::create('GET', '/hello'))->body());
-    assertStatus(404, $router->dispatch(Request::create('GET', '/nope')));
+
+    $e = assertThrows(static fn () => $router->dispatch(Request::create('GET', '/nope')));
+    assertTrue($e instanceof ProtonException, 'ожидалась ProtonException');
+    assertSame(404, $e->getCode());
 });
 
 test('роутер: метод не тот — 405, а не 404', function (): void {
@@ -25,7 +28,9 @@ test('роутер: метод не тот — 405, а не 404', function (): v
 
     $router->get('/only-get', static fn (): Response => Response::text('ок'));
 
-    assertStatus(405, $router->dispatch(Request::create('POST', '/only-get')));
+    $e = assertThrows(static fn () => $router->dispatch(Request::create('POST', '/only-get')));
+    assertTrue($e instanceof ProtonException, 'ожидалась ProtonException');
+    assertSame(405, $e->getCode());
 });
 
 test('роутер: параметры адреса приводятся к типу аргумента', function (): void {
@@ -38,7 +43,9 @@ test('роутер: параметры адреса приводятся к ти
     assertSame("true", $router->dispatch(Request::create('GET', '/items/7'))->body());
 
     // Ограничение работает: буквы под \d+ не подходят
-    assertStatus(404, $router->dispatch(Request::create('GET', '/items/abc')));
+    $e = assertThrows(static fn () => $router->dispatch(Request::create('GET', '/items/abc')));
+    assertTrue($e instanceof ProtonException, 'ожидалась ProtonException');
+    assertSame(404, $e->getCode());
 });
 
 test('роутер: группы складывают префиксы и прослойки', function (): void {
