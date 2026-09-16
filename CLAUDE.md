@@ -266,6 +266,7 @@ php bin/proton worker [--once] [--queue=default,webhooks]|worker:restart|schedul
 php bin/proton queue:status|queue:retry|queue:purge
 php bin/proton user:create|user:list|user:password|user:delete|role:list
 php bin/proton key:create|key:list|key:revoke
+php bin/proton settings:export|settings:import   перенос настроек и ролей между окружениями
 php bin/proton mail:test <адрес>     пробное письмо
 php bin/proton webhook:list [--events]  подписки или реестр событий
 php bin/proton webhook:test <id>     пробная посылка подписчику

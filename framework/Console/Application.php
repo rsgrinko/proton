@@ -65,6 +65,8 @@ final class Application
             Commands\KeyCreateCommand::class,
             Commands\KeyListCommand::class,
             Commands\KeyRevokeCommand::class,
+            Commands\SettingsExportCommand::class,
+            Commands\SettingsImportCommand::class,
         ],
         'Почта' => [
             Commands\MailTestCommand::class,
