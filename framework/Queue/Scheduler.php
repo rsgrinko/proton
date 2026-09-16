@@ -27,20 +27,43 @@ use Throwable;
  *
  * Отметки о последнем запуске лежат в settings, поэтому перезапуск воркера
  * не превращается в повторный прогон всего расписания.
+ *
+ * У every() интервал считается от начала предыдущего запуска: копия каждые
+ * 6 часов начинается каждые 6 часов, сколько бы сама ни делалась. Для задачи
+ * переменной длины (обошла тысячу записей за минуту, десять тысяч — за
+ * четверть часа) это не годится: конец одного прогона может упереться
+ * в начало следующего. everyAfterPrevious() считает интервал от конца
+ * предыдущего запуска — следующий круг стартует не раньше, чем через
+ * положенное время после того, как отработал прошлый.
  */
 final class Scheduler
 {
-    /** @var array<string, array{interval: int, at: string, callback: callable}> */
+    /** Интервал считается от начала предыдущего запуска */
+    private const MODE_START = 'start';
+
+    /** Интервал считается от конца предыдущего запуска — годится для длинных задач */
+    private const MODE_FINISH = 'finish';
+
+    /** @var array<string, array{interval: int, at: string, mode: string, callback: callable}> */
     private static array $tasks = [];
 
     private static bool $booted = false;
 
     /**
-     * Задача раз в N секунд.
+     * Задача раз в N секунд, интервал от начала предыдущего запуска.
      */
     public static function every(int $seconds, string $name, callable $callback): void
     {
-        self::$tasks[$name] = ['interval' => max(1, $seconds), 'at' => '', 'callback' => $callback];
+        self::register($name, max(1, $seconds), '', self::MODE_START, $callback);
+    }
+
+    /**
+     * Задача раз в N секунд, интервал от конца предыдущего запуска — следующий
+     * круг не начнётся, пока не отдохнёт положенное время после прошлого.
+     */
+    public static function everyAfterPrevious(int $seconds, string $name, callable $callback): void
+    {
+        self::register($name, max(1, $seconds), '', self::MODE_FINISH, $callback);
     }
 
     /**
@@ -48,7 +71,12 @@ final class Scheduler
      */
     public static function dailyAt(string $time, string $name, callable $callback): void
     {
-        self::$tasks[$name] = ['interval' => 86400, 'at' => $time, 'callback' => $callback];
+        self::register($name, 86400, $time, self::MODE_START, $callback);
+    }
+
+    private static function register(string $name, int $interval, string $at, string $mode, callable $callback): void
+    {
+        self::$tasks[$name] = ['interval' => $interval, 'at' => $at, 'mode' => $mode, 'callback' => $callback];
     }
 
     /**
@@ -68,9 +96,15 @@ final class Scheduler
                 continue;
             }
 
-            // Отметку ставим до выполнения: упавшая задача не должна повторяться
-            // каждую секунду — она подождёт свой следующий срок
-            Setting::set(self::key($name), (string) time());
+            $fromFinish = ($task['mode'] ?? self::MODE_START) === self::MODE_FINISH;
+
+            // Отметку по умолчанию ставим до выполнения: упавшая задача не должна
+            // повторяться каждую секунду — она подождёт свой следующий срок.
+            // У задачи с интервалом от конца отметка ставится после — в finally,
+            // так что и успешный прогон, и упавший получают свой отдых поровну
+            if (!$fromFinish) {
+                Setting::set(self::key($name), (string) time());
+            }
 
             try {
                 ($task['callback'])();
@@ -78,6 +112,10 @@ final class Scheduler
                 $done[] = $name;
             } catch (Throwable $e) {
                 $logger->error('Задача расписания упала', ['task' => $name, 'error' => $e->getMessage()]);
+            } finally {
+                if ($fromFinish) {
+                    Setting::set(self::key($name), (string) time());
+                }
             }
         }
 
@@ -105,11 +143,19 @@ final class Scheduler
             return false;
         }
 
-        try {
-            Setting::set(self::key($name), (string) time());
+        $fromFinish = (self::$tasks[$name]['mode'] ?? self::MODE_START) === self::MODE_FINISH;
 
+        if (!$fromFinish) {
+            Setting::set(self::key($name), (string) time());
+        }
+
+        try {
             (self::$tasks[$name]['callback'])();
         } finally {
+            if ($fromFinish) {
+                Setting::set(self::key($name), (string) time());
+            }
+
             $lock->release();
         }
 
@@ -119,7 +165,7 @@ final class Scheduler
     /**
      * Все объявленные задачи с временем последнего запуска — показывает состояние.
      *
-     * @return array<int, array{name: string, interval: int, at: string, last: string}>
+     * @return array<int, array{name: string, interval: int, at: string, last: string, fromFinish: bool}>
      */
     public static function tasks(): array
     {
@@ -131,10 +177,11 @@ final class Scheduler
             $last = (int) Setting::get(self::key($name), '0');
 
             $result[] = [
-                'name'     => $name,
-                'interval' => $task['interval'],
-                'at'       => $task['at'],
-                'last'     => $last === 0 ? '' : date('Y-m-d H:i:s', $last),
+                'name'       => $name,
+                'interval'   => $task['interval'],
+                'at'         => $task['at'],
+                'last'       => $last === 0 ? '' : date('Y-m-d H:i:s', $last),
+                'fromFinish' => ($task['mode'] ?? self::MODE_START) === self::MODE_FINISH,
             ];
         }
 

@@ -189,3 +189,24 @@ test('расписание: задача выполняется один раз 
         Scheduler::reset();
     });
 });
+
+test('расписание: задача «от конца» ставит отметку только после себя', function (): void {
+    withOwnDatabase(static function (): void {
+        Scheduler::reset();
+
+        $duringRun = null;
+
+        Scheduler::everyAfterPrevious(3600, 'test:slow', static function () use (&$duringRun): void {
+            // Пока задача работает, отметка ещё старая — обычная every() уже
+            // выставила бы новую до вызова колбэка
+            $duringRun = Setting::get('schedule:test:slow', 'пусто');
+        });
+
+        Scheduler::run();
+
+        assertSame('пусто', $duringRun, 'во время работы отметка не тронута');
+        assertTrue((int) Setting::get('schedule:test:slow', '0') > 0, 'а после выполнения — стоит');
+
+        Scheduler::reset();
+    });
+});

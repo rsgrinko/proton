@@ -9,7 +9,7 @@ declare(strict_types=1);
  * @var \Rsgrinko\Proton\Support\Filters $filters
  * @var array<string, int> $stats
  * @var array<string, string> $statuses
- * @var array<int, array{name: string, interval: int, at: string, last: string}> $schedule
+ * @var array<int, array{name: string, interval: int, at: string, last: string, fromFinish: bool}> $schedule
  */
 
 use Rsgrinko\Proton\Queue\Queue;
@@ -52,7 +52,12 @@ $badges = [
                 <?php foreach ($schedule as $task) { ?>
                     <tr>
                         <td class="mono small"><?= View::e($task['name']) ?></td>
-                        <td class="small"><?= View::e($task['at'] !== '' ? 'ежедневно в ' . $task['at'] : 'раз в ' . $task['interval'] . ' с') ?></td>
+                        <td class="small">
+                            <?= View::e($task['at'] !== '' ? 'ежедневно в ' . $task['at'] : 'раз в ' . $task['interval'] . ' с') ?>
+                            <?php if ($task['fromFinish']) { ?>
+                                <span class="muted small">(от конца прошлого запуска)</span>
+                            <?php } ?>
+                        </td>
                         <td class="muted small"><?= View::e($task['last'] === '' ? 'ни разу' : View::ago($task['last'])) ?></td>
                         <td class="right">
                             <form method="post" action="<?= View::e(View::route('admin.queue.run')) ?>">
