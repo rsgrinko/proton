@@ -13,6 +13,7 @@ use App\Models\Note;
 use Rsgrinko\Proton\Access\Permission;
 use Rsgrinko\Proton\Auth\Auth;
 use Rsgrinko\Proton\Auth\Csrf;
+use Rsgrinko\Proton\Comments\Comment;
 use Rsgrinko\Proton\Http\Kernel;
 use Rsgrinko\Proton\Http\Request;
 use Rsgrinko\Proton\Http\Response;
@@ -215,6 +216,46 @@ test('http: чужая запись для обычного пользовате
     $list = httpRequest('GET', '/notes', httpUser());
 
     assertNotContains('Чужая заметка', $list->body());
+});
+
+test('http: комментарий к заметке пишет и стирает свой, чужой — только с notes.manage', function (): void {
+    $note = Note::create(['title' => 'Заметка для обсуждения']);
+
+    $note->forceFill(['user_id' => httpAdmin()->id()])->save();
+
+    $response = httpRequest('POST', '/notes/' . $note->id() . '/comments', httpAdmin(), ['body' => 'Первый комментарий']);
+
+    assertStatus(302, $response);
+
+    $shown = httpRequest('GET', '/notes/' . $note->id(), httpAdmin());
+
+    assertSee('Первый комментарий', $shown);
+
+    $comment = assertNotNull(Comment::query()->where('entity', 'note')->where('entity_id', (string) $note->id())->first());
+
+    // Читатель без notes.manage чужой комментарий не уберёт
+    $role = Role::create(['name' => 'Только смотрит ' . bin2hex(random_bytes(3)), 'permissions' => ['notes.view']]);
+
+    $viewer = User::register('http_comment_viewer_' . bin2hex(random_bytes(3)), 'секрет123', [
+        'email'   => 'commentviewer' . bin2hex(random_bytes(3)) . '@example.com',
+        'role_id' => $role->id(),
+    ]);
+
+    afterTests(static function () use ($viewer, $role): void {
+        $viewer->forceDelete();
+        $role->forceDelete();
+    });
+
+    $denied = httpRequest('POST', '/notes/' . $note->id() . '/comments/delete', $viewer, ['comment' => $comment->id()]);
+
+    assertStatus(302, $denied);
+    assertNotNull(Comment::find($comment->id()), 'чужой комментарий остался цел');
+
+    // Сам автор свой комментарий убирает
+    $removed = httpRequest('POST', '/notes/' . $note->id() . '/comments/delete', httpAdmin(), ['comment' => $comment->id()]);
+
+    assertStatus(302, $removed);
+    assertNull(Comment::find($comment->id()));
 });
 
 test('http: форма без токена ничего не меняет', function (): void {

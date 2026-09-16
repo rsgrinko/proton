@@ -8,6 +8,7 @@ declare(strict_types=1);
  * @var \App\Models\Note $note
  * @var \Rsgrinko\Proton\Models\User|null $author
  * @var array<int, \Rsgrinko\Proton\Files\Attachment> $attachments
+ * @var array<int, \Rsgrinko\Proton\Comments\Comment> $comments
  */
 
 use Rsgrinko\Proton\Support\SignedUrl;
@@ -107,6 +108,43 @@ use Rsgrinko\Proton\View\View;
         </div>
     </div>
 <?php } ?>
+
+<div class="card">
+    <h2>Комментарии (<?= count($comments) ?>)</h2>
+
+    <?php if ($comments === []) { ?>
+        <p class="muted small">Пока никто не написал.</p>
+    <?php } else { ?>
+        <?php $viewerId = View::viewer()->id(); ?>
+        <div class="comments">
+            <?php foreach ($comments as $comment) { ?>
+                <?php $author = $comment->author; ?>
+                <div class="comment">
+                    <div class="row">
+                        <strong class="small"><?= View::e($author === null ? 'удалённый пользователь' : (string) $author->login) ?></strong>
+                        <span class="muted small"><?= View::e(View::ago((string) $comment->raw('created_at'))) ?></span>
+                        <span class="spacer"></span>
+
+                        <?php if ((int) $comment->raw('user_id') === $viewerId || View::can('notes.manage')) { ?>
+                            <form method="post" action="<?= View::e(View::route('notes.comment.delete', ['id' => $note->id()])) ?>">
+                                <?= View::csrf() ?>
+                                <input type="hidden" name="comment" value="<?= $comment->id() ?>">
+                                <button type="submit" class="small danger">Убрать</button>
+                            </form>
+                        <?php } ?>
+                    </div>
+                    <p class="break small"><?= View::e((string) $comment->raw('body')) ?></p>
+                </div>
+            <?php } ?>
+        </div>
+    <?php } ?>
+
+    <form method="post" action="<?= View::e(View::route('notes.comment', ['id' => $note->id()])) ?>" style="margin-top: 12px;">
+        <?= View::csrf() ?>
+        <textarea name="body" rows="3" placeholder="Написать комментарий…" required></textarea>
+        <button type="submit" class="primary" style="margin-top: 8px;">Отправить</button>
+    </form>
+</div>
 
 <?= View::partial('history', ['entity' => 'note', 'id' => $note->id()]) ?>
 

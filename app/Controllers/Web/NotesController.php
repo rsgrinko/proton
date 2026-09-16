@@ -8,6 +8,7 @@ use App\Models\Note;
 use Rsgrinko\Proton\Access\Policy;
 use Rsgrinko\Proton\Access\Scope;
 use Rsgrinko\Proton\Access\Viewer;
+use Rsgrinko\Proton\Comments\Comment;
 use Rsgrinko\Proton\Database\Model\Query;
 use Rsgrinko\Proton\Database\Model\RecordNotFound;
 use Rsgrinko\Proton\Events\Events;
@@ -313,6 +314,7 @@ final class NotesController extends Controller
             'note'        => $note,
             'author'      => $note->author,
             'attachments' => Attachment::of('note', $note->id()),
+            'comments'    => Comment::of('note', $note->id()),
         ], (string) $note->title);
     }
 
@@ -489,6 +491,63 @@ final class NotesController extends Controller
             (string) $found->raw('name'),
             (string) $found->raw('mime') ?: 'application/octet-stream'
         );
+    }
+
+    /**
+     * Оставить комментарий. Доступно всем, кто видит заметку, — обсуждение,
+     * а не правка: право смотреть уже проверено прослойкой notes.view.
+     */
+    public function comment(Request $request, int $id, Scope $scope, Viewer $viewer): Response
+    {
+        $note = $this->find($id, $scope);
+
+        $data = $this->validate($request, [
+            'body' => 'required|max:2000',
+        ], ['body' => 'Комментарий']);
+
+        Comment::add('note', $note->id(), $viewer->id(), (string) $data['body']);
+
+        Audit::action('note', $note->id(), 'оставлен комментарий');
+
+        $this->flash('Комментарий добавлен');
+
+        return $this->redirect('notes.show', ['id' => $note->id()]);
+    }
+
+    /**
+     * Убрать комментарий: свой — сам автор, чужой — только у кого есть
+     * notes.manage. Одно и то же действие, а не два разных маршрута.
+     */
+    public function commentDelete(Request $request, int $id, Scope $scope, Viewer $viewer): Response
+    {
+        $note = $this->find($id, $scope);
+
+        /** @var Comment|null $comment */
+        $comment = Comment::query()
+            ->where('entity', 'note')
+            ->where('entity_id', (string) $note->id())
+            ->where('id', (int) $request->input('comment', 0))
+            ->first();
+
+        if ($comment === null) {
+            $this->flash('Комментария нет', 'error');
+
+            return $this->redirect('notes.show', ['id' => $note->id()]);
+        }
+
+        if ((int) $comment->raw('user_id') !== $viewer->id() && !$viewer->can('notes.manage')) {
+            $this->flash('Убрать можно только свой комментарий', 'error');
+
+            return $this->redirect('notes.show', ['id' => $note->id()]);
+        }
+
+        $comment->delete();
+
+        Audit::action('note', $note->id(), 'убран комментарий');
+
+        $this->flash('Комментарий убран');
+
+        return $this->redirect('notes.show', ['id' => $note->id()]);
     }
 
     /**

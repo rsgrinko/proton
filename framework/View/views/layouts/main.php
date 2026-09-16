@@ -237,6 +237,11 @@ $unread = $viewer->isGuest() ? 0 : UserNotification::unreadFor($viewer->id());
         .attachments .file-icon { display: flex; align-items: center; justify-content: center; width: 140px; height: 100px;
                                   border: 1px solid var(--border); border-radius: 6px; color: var(--muted); font-size: 12px; }
 
+        .comments .comment { padding: 10px 0; border-bottom: 1px solid var(--border); }
+        .comments .comment:last-child { border-bottom: none; }
+        .comments .comment p { margin: 6px 0 0; }
+        .comments textarea { min-height: 70px; font-family: inherit; font-size: 14px; }
+
         .bulk-bar { margin-bottom: 10px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; }
 
         /* Панель отладки: видна только при APP_DEBUG и не мешает содержимому */

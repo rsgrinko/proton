@@ -103,6 +103,8 @@ return static function (Router $router): void {
                 $router->get('/{id:\d+}/file', [NotesController::class, 'file'])->middleware('can:notes.view')->name('notes.file');
                 $router->post('/{id:\d+}/detach', [NotesController::class, 'detach'])->middleware('can:notes.manage')->name('notes.detach');
                 $router->get('/{id:\d+}/attachment/{attachment:\d+}', [NotesController::class, 'attachment'])->middleware('can:notes.view')->name('notes.attachment');
+                $router->post('/{id:\d+}/comments', [NotesController::class, 'comment'])->middleware('can:notes.view')->name('notes.comment');
+                $router->post('/{id:\d+}/comments/delete', [NotesController::class, 'commentDelete'])->middleware('can:notes.view')->name('notes.comment.delete');
             });
         });
     });
