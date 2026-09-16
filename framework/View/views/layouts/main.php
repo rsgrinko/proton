@@ -18,6 +18,7 @@ declare(strict_types=1);
 
 use Rsgrinko\Proton\Models\UserNotification;
 use Rsgrinko\Proton\Support\Config;
+use Rsgrinko\Proton\Support\Profiler;
 use Rsgrinko\Proton\View\View;
 
 $bare = $bare ?? false;
@@ -244,14 +245,23 @@ $unread = $viewer->isGuest() ? 0 : UserNotification::unreadFor($viewer->id());
 
         .bulk-bar { margin-bottom: 10px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; }
 
-        /* Панель отладки: видна только при APP_DEBUG и не мешает содержимому */
+        /* Панель отладки: видна только при APP_DEBUG. Свёрнутая, она занимает
+           только строку summary — но position:fixed есть у неё всегда, поэтому
+           main.has-profiler ниже держит для этой строки готовое место, а не
+           перекрывает последнюю строку таблицы или кнопку внизу страницы */
         .profiler { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; max-height: 60vh; overflow-y: auto;
                     background: var(--panel); border-top: 1px solid var(--border); padding: 6px 12px; font-size: 12px; }
         .profiler summary { cursor: pointer; color: var(--muted); }
+        .profiler[open] summary { border-bottom: 1px solid var(--border); padding-bottom: 6px; margin-bottom: 6px; }
         .profiler .warn { color: var(--warn); }
         .profiler h3 { font-size: 12px; margin: 10px 0 4px; }
+        .profiler table { margin-bottom: 4px; }
         .profiler td { padding: 2px 6px; border: none; vertical-align: top; }
         .profiler td.count { white-space: nowrap; color: var(--muted); }
+        .profiler details { margin-top: 8px; }
+        .profiler details summary { color: var(--text); }
+
+        main.has-profiler { padding-bottom: 34px; }
 
         a.sort { color: inherit; text-decoration: none; white-space: nowrap; }
         a.sort:hover { text-decoration: underline; }
@@ -417,7 +427,8 @@ $unread = $viewer->isGuest() ? 0 : UserNotification::unreadFor($viewer->id());
 </header>
 <?php } ?>
 
-<main<?= $bare ? ' class="auth"' : '' ?>>
+<?php $mainClass = trim(($bare ? 'auth ' : '') . (Profiler::enabled() ? 'has-profiler' : '')); ?>
+<main<?= $mainClass !== '' ? ' class="' . $mainClass . '"' : '' ?>>
     <?php foreach ($flash as $item) { ?>
         <div class="flash <?= View::e($item['type']) ?>"><?= View::e($item['message']) ?></div>
     <?php } ?>

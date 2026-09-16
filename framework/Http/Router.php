@@ -41,6 +41,9 @@ final class Router
     /** Защита от повторного входа: файл маршрутов сам может спросить адрес */
     private static bool $booting = false;
 
+    /** Маршрут, который обслуживает текущий запрос — панели отладки нужно его имя */
+    private static ?Route $current = null;
+
     /**
      * Подключает файл маршрутов. Файл возвращает функцию, принимающую роутер.
      */
@@ -177,6 +180,8 @@ final class Router
                 continue;
             }
 
+            self::$current = $route;
+
             return $this->run($route, $request, $params);
         }
 
@@ -226,6 +231,16 @@ final class Router
         $base = rtrim((string) Config::get('app.url', ''), '/');
 
         return $base . self::url($name, $params);
+    }
+
+    /**
+     * Маршрут, который обслуживает текущий запрос, — null вне HTTP (консоль,
+     * воркер) или если он ещё не найден (запрос не дошёл до dispatch()).
+     * Нужен панели отладки: без этого показать имя маршрута было бы неоткуда.
+     */
+    public static function current(): ?Route
+    {
+        return self::$current;
     }
 
     /**
