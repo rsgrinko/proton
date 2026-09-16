@@ -72,9 +72,15 @@ return static function (Router $router): void {
             // users.manage не сменил бы себе даже пароль
             $router->get('/profile', [ProfileController::class, 'show'])->name('profile');
             $router->post('/profile', [ProfileController::class, 'update']);
+            $router->post('/profile/avatar', [ProfileController::class, 'avatarUpload'])->name('profile.avatar');
+            $router->post('/profile/avatar/delete', [ProfileController::class, 'avatarDelete'])->name('profile.avatar.delete');
             $router->post('/profile/password', [ProfileController::class, 'password'])->name('profile.password');
             $router->post('/profile/devices/revoke', [ProfileController::class, 'revoke'])->name('profile.devices.revoke');
             $router->post('/profile/devices/others', [ProfileController::class, 'revokeOthers'])->name('profile.devices.others');
+
+            // Фото пользователя — по id, а не только своё: видно в списке и на
+            // чужой карточке
+            $router->get('/avatar/{id:\d+}', [ProfileController::class, 'avatar'])->name('avatar.show');
 
             // Свои уведомления смотрит каждый вошедший: право тут ни при чём,
             // чужих он всё равно не увидит

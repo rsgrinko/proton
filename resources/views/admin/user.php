@@ -21,7 +21,10 @@ $isNew  = !$user->existsInDatabase();
 $action = $isNew ? View::route('admin.users.create') : View::route('admin.users.show', ['id' => $user->id()]);
 $hint   = $isNew ? 'пусто — придумаем сами' : 'пусто — не менять';
 ?>
-<h1><?= $isNew ? 'Новый пользователь' : View::e((string) $user->login) ?></h1>
+<div class="row">
+    <?php if (!$isNew) { ?><?= View::avatar($user) ?><?php } ?>
+    <h1 style="margin: 0;"><?= $isNew ? 'Новый пользователь' : View::e((string) $user->login) ?></h1>
+</div>
 
 <div class="card">
     <form method="post" action="<?= View::e($action) ?>">

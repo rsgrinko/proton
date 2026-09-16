@@ -313,6 +313,33 @@ final class View
     }
 
     /**
+     * Фото профиля или заглушка того же размера — кружок с первой буквой имени
+     * на ровном фоне, свой для каждого пользователя. Без файла на диске
+     * заглушка рисуется чистым CSS, поэтому подмена никогда не сдвигает
+     * соседей: и то и другое — квадрат `--size` с `border-radius: 50%`.
+     */
+    public static function avatar(User $user, bool $large = false): string
+    {
+        $class = 'avatar' . ($large ? ' lg' : '');
+        $name  = trim((string) ($user->name ?: $user->login));
+
+        if ($user->hasAvatar()) {
+            // Хвост в адресе — от пути файла: заменили фото — изменился путь,
+            // изменилась и ссылка, старая копия в кэше браузера не мешает
+            $version = substr(md5((string) $user->raw('avatar_path')), 0, 8);
+            $url     = self::route('avatar.show', ['id' => $user->id()]) . '?v=' . $version;
+
+            return '<img class="' . $class . '" src="' . self::e($url) . '" alt="' . self::e($name) . '">';
+        }
+
+        $letter = $name === '' ? '?' : mb_strtoupper(mb_substr($name, 0, 1, 'UTF-8'), 'UTF-8');
+        $hue    = ($user->id() * 47) % 360;
+
+        return '<span class="' . $class . ' avatar-placeholder" style="--avatar-hue: ' . $hue . '" title="' . self::e($name) . '">'
+            . self::e($letter) . '</span>';
+    }
+
+    /**
      * Кнопка «скопировать» рядом со значением: ключ, идентификатор, команда.
      * Обязательно type="button" — кнопки стоят и внутри форм.
      */

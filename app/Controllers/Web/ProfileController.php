@@ -6,6 +6,7 @@ namespace App\Controllers\Web;
 
 use Rsgrinko\Proton\Auth\Auth;
 use Rsgrinko\Proton\Auth\Devices;
+use Rsgrinko\Proton\Files\Storage;
 use Rsgrinko\Proton\Http\Controller;
 use Rsgrinko\Proton\Http\Request;
 use Rsgrinko\Proton\Http\Response;
@@ -14,6 +15,7 @@ use Rsgrinko\Proton\Models\UserField;
 use Rsgrinko\Proton\Models\UserFieldValue;
 use Rsgrinko\Proton\Support\Audit;
 use Rsgrinko\Proton\Support\Config;
+use Rsgrinko\Proton\Support\ProtonException;
 
 /**
  * Свой профиль: имя, почта, пароль, свои поля и список устройств.
@@ -25,6 +27,15 @@ final class ProfileController extends Controller
 {
     /** Встроенные поля профиля сверх минимума ядра — не путать со своими, из UserField */
     private const COLUMNS = ['name', 'email', 'phone', 'website', 'position', 'location', 'bio'];
+
+    /** Расширение => MIME: аватар — только растровая картинка, не любой файл из files.allowed */
+    private const AVATAR_TYPES = [
+        'jpg'  => 'image/jpeg',
+        'jpeg' => 'image/jpeg',
+        'png'  => 'image/png',
+        'gif'  => 'image/gif',
+        'webp' => 'image/webp',
+    ];
 
     public function show(User $user): Response
     {
@@ -86,6 +97,87 @@ final class ProfileController extends Controller
         $this->flash('Профиль сохранён');
 
         return $this->redirect('profile');
+    }
+
+    /**
+     * Новое фото профиля. Прежний файл убираем только после того, как новый
+     * лёг на диск, — иначе при сбое посреди записи человек остался бы без обоих.
+     */
+    public function avatarUpload(Request $request, User $user): Response
+    {
+        $file = $request->file('avatar');
+
+        if ($file === null || !$file->uploaded()) {
+            $this->flash($file?->error() ?? 'Выберите файл', 'error');
+
+            return $this->redirect('profile');
+        }
+
+        if (!array_key_exists($file->extension(), self::AVATAR_TYPES) || !str_starts_with($file->mime(), 'image/')) {
+            $this->flash('Фото должно быть картинкой: jpg, png, gif или webp', 'error');
+
+            return $this->redirect('profile');
+        }
+
+        try {
+            $stored = Storage::put($file, 'avatars');
+        } catch (ProtonException $e) {
+            $this->flash($e->getMessage(), 'error');
+
+            return $this->redirect('profile');
+        }
+
+        $previous = (string) $user->avatar_path;
+
+        $user->forceFill(['avatar_path' => $stored['path'], 'avatar_mime' => $stored['mime']])->save();
+
+        if ($previous !== '') {
+            Storage::delete($previous);
+        }
+
+        Audit::action('user', $user->id(), 'сменил фото профиля');
+
+        $this->flash('Фото сохранено');
+
+        return $this->redirect('profile');
+    }
+
+    /**
+     * Убрать фото — дальше показывается заглушка с инициалом.
+     */
+    public function avatarDelete(User $user): Response
+    {
+        $path = (string) $user->avatar_path;
+
+        if ($path === '') {
+            return $this->redirect('profile');
+        }
+
+        $user->forceFill(['avatar_path' => '', 'avatar_mime' => ''])->save();
+        Storage::delete($path);
+
+        Audit::action('user', $user->id(), 'убрал фото профиля');
+
+        $this->flash('Фото убрано');
+
+        return $this->redirect('profile');
+    }
+
+    /**
+     * Отдаёт фото по id пользователя — своё или чужое: аватар виден везде,
+     * где виден сам человек (список, чужая карточка), а не только в своём
+     * профиле. Хранилище вне public, поэтому файл отдаёт код, а не веб-сервер.
+     */
+    public function avatar(int $id): Response
+    {
+        /** @var User|null $user */
+        $user = User::find($id);
+
+        if ($user === null || !$user->hasAvatar() || !Storage::exists((string) $user->avatar_path)) {
+            return new Response('', 404);
+        }
+
+        return Response::file(Storage::path((string) $user->avatar_path), (string) $user->avatar_mime ?: 'application/octet-stream');
     }
 
     private static function metaKey(UserField $field): string

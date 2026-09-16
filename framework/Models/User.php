@@ -70,6 +70,11 @@ final class User extends Model
         return (int) $this->raw('active') === 1;
     }
 
+    public function hasAvatar(): bool
+    {
+        return trim((string) $this->raw('avatar_path')) !== '';
+    }
+
     public function emailVerified(): bool
     {
         return trim((string) $this->raw('email_verified_at')) !== '';

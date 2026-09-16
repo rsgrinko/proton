@@ -17,6 +17,34 @@ use Rsgrinko\Proton\View\View;
 ?>
 <h1>Профиль</h1>
 
+<div class="card">
+    <h2>Фото</h2>
+
+    <div class="row" style="align-items: flex-start;">
+        <?= View::avatar($user, true) ?>
+
+        <form method="post" action="<?= View::e(View::route('profile.avatar')) ?>" enctype="multipart/form-data" style="flex: 1; min-width: 220px;">
+            <?= View::csrf() ?>
+
+            <label>
+                <span>Новый файл — jpg, png, gif или webp</span>
+                <input type="file" name="avatar" accept="image/jpeg,image/png,image/gif,image/webp" required>
+            </label>
+
+            <div class="row">
+                <button type="submit" class="primary"><?= $user->hasAvatar() ? 'Заменить' : 'Загрузить' ?></button>
+            </div>
+        </form>
+
+        <?php if ($user->hasAvatar()) { ?>
+            <form method="post" action="<?= View::e(View::route('profile.avatar.delete')) ?>">
+                <?= View::csrf() ?>
+                <button type="submit" class="danger" data-confirm="Убрать фото профиля?">Убрать</button>
+            </form>
+        <?php } ?>
+    </div>
+</div>
+
 <div class="grid cols-2">
     <div class="card">
         <h2>Данные</h2>

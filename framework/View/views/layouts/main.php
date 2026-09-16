@@ -160,6 +160,34 @@ $unread = $viewer->isGuest() ? 0 : UserNotification::unreadFor($viewer->id());
         .badge.info { background: var(--info-bg); color: var(--accent); }
         .badge.muted { background: var(--border); color: var(--muted); }
 
+        /* Фото профиля и заглушка того же размера — оба квадрат с
+           border-radius: 50%, поэтому появление настоящего фото вместо
+           инициалов (и наоборот, после удаления) никогда не сдвигает
+           соседний текст: место под кружок зарезервировано всегда одно */
+        .avatar, .avatar-placeholder {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            flex: none;
+            vertical-align: middle;
+        }
+
+        .avatar { object-fit: cover; background: var(--border); }
+
+        .avatar-placeholder {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: hsl(var(--avatar-hue, 210), 45%, 38%);
+            color: #fff;
+            font-weight: 600;
+            font-size: 15px;
+            user-select: none;
+        }
+
+        .avatar.lg, .avatar-placeholder.lg { width: 96px; height: 96px; }
+        .avatar-placeholder.lg { font-size: 36px; }
+
         /* Перечислять типы полей по одному — значит рано или поздно забыть
            очередной (так поле type=url осталось без рамки): стилизуем всё,
            кроме того, что рисуется само — галочек, кнопок и выбора файла */
