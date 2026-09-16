@@ -188,6 +188,11 @@ $unread = $viewer->isGuest() ? 0 : UserNotification::unreadFor($viewer->id());
         .avatar.lg, .avatar-placeholder.lg { width: 96px; height: 96px; }
         .avatar-placeholder.lg { font-size: 36px; }
 
+        /* В шапке аватар — только опознавательный знак рядом с именем, не
+           витрина: своя, меньшая величина того же кружка */
+        .who-name { display: inline-flex; align-items: center; gap: 6px; }
+        .who-name .avatar, .who-name .avatar-placeholder { width: 22px; height: 22px; font-size: 10px; }
+
         /* Перечислять типы полей по одному — значит рано или поздно забыть
            очередной (так поле type=url осталось без рамки): стилизуем всё,
            кроме того, что рисуется само — галочек, кнопок и выбора файла */
@@ -442,7 +447,10 @@ $unread = $viewer->isGuest() ? 0 : UserNotification::unreadFor($viewer->id());
                 <a class="muted small" href="<?= View::e(View::route('notifications')) ?>" title="Уведомления">
                     Уведомления<?= $unread > 0 ? ' <span class="badge warn">' . $unread . '</span>' : '' ?>
                 </a>
-                <a class="muted small" href="<?= View::e(View::route('profile')) ?>"><?= View::e($viewer->name()) ?></a>
+                <a class="muted small who-name" href="<?= View::e(View::route('profile')) ?>">
+                    <?php if ($viewer->user() !== null) { ?><?= View::avatar($viewer->user()) ?><?php } ?>
+                    <?= View::e($viewer->name()) ?>
+                </a>
                 <form method="post" action="<?= View::e(View::route('logout')) ?>">
                     <?= View::csrf() ?>
                     <button type="submit">Выйти</button>

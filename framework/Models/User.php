@@ -9,6 +9,7 @@ use Rsgrinko\Proton\Database\Connection;
 use Rsgrinko\Proton\Database\Model\Model;
 use Rsgrinko\Proton\Database\Model\Relations\BelongsTo;
 use Rsgrinko\Proton\Database\Model\Relations\HasMany;
+use Rsgrinko\Proton\Files\Storage;
 use Rsgrinko\Proton\Support\Str;
 
 /**
@@ -84,9 +85,16 @@ final class User extends Model
         return (int) $this->raw('active') === 1;
     }
 
+    /**
+     * Не просто «путь записан», а «файл правда на диске» — иначе битая
+     * ссылка (файл потёрли в обход загрузки) рисуется у всех сломанной
+     * картинкой вместо заглушки.
+     */
     public function hasAvatar(): bool
     {
-        return trim((string) $this->raw('avatar_path')) !== '';
+        $path = trim((string) $this->raw('avatar_path'));
+
+        return $path !== '' && Storage::exists($path);
     }
 
     public function emailVerified(): bool

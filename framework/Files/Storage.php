@@ -39,6 +39,11 @@ final class Storage
 
         self::assertAllowed($file);
 
+        // Тип по содержимому смотрим до переноса: mime() сам читает файл по
+        // tmpPath(), а move_uploaded_file() ниже уводит его оттуда — спроси
+        // после переноса, получишь «файла нет» и голый application/octet-stream
+        $mime = $file->mime();
+
         $extension = $file->extension();
         $relative  = trim($folder, '/');
         $relative  = ($relative === '' ? '' : $relative . '/') . date('Y/m') . '/'
@@ -67,7 +72,7 @@ final class Storage
             'path' => $relative,
             'name' => $file->name(),
             'size' => (int) filesize($target),
-            'mime' => $file->mime(),
+            'mime' => $mime,
         ];
     }
 

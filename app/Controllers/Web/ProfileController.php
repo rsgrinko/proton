@@ -173,11 +173,17 @@ final class ProfileController extends Controller
         /** @var User|null $user */
         $user = User::find($id);
 
-        if ($user === null || !$user->hasAvatar() || !Storage::exists((string) $user->avatar_path)) {
+        if ($user === null || !$user->hasAvatar()) {
             return new Response('', 404);
         }
 
-        return Response::file(Storage::path((string) $user->avatar_path), (string) $user->avatar_mime ?: 'application/octet-stream');
+        // Ссылка несёт хеш пути файла (View::avatar()): пока фото не заменили,
+        // адрес не меняется, и браузеру незачем перекачивать его на каждой
+        // странице — без этих заголовков сессия шлёт no-store на любой ответ
+        return Response::file(Storage::path((string) $user->avatar_path), (string) $user->avatar_mime ?: 'application/octet-stream')
+            ->withHeader('Cache-Control', 'private, max-age=31536000, immutable')
+            ->withHeader('Pragma', 'cache')
+            ->withHeader('Expires', gmdate('D, d M Y H:i:s', time() + 31536000) . ' GMT');
     }
 
     private static function metaKey(UserField $field): string
