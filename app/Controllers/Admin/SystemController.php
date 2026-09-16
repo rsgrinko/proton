@@ -16,6 +16,7 @@ use Rsgrinko\Proton\Queue\Scheduler;
 use Rsgrinko\Proton\Queue\Worker;
 use Rsgrinko\Proton\Support\Audit;
 use Rsgrinko\Proton\Support\Diagnostics;
+use Rsgrinko\Proton\Support\Maintenance;
 use Rsgrinko\Proton\Support\Metrics;
 use Throwable;
 
@@ -33,17 +34,18 @@ final class SystemController extends Controller
         $checks = Diagnostics::run();
 
         return $this->view('admin/system', [
-            'active'   => 'system',
-            'checks'   => $checks,
-            'health'   => Diagnostics::worst($checks),
-            'metrics'  => Metrics::requests(24),
-            'storage'  => Metrics::storage(),
-            'queue'    => Queue::stats(),
-            'schedule' => Scheduler::tasks(),
-            'events'   => Events::registered(),
-            'settings' => Setting::all(),
-            'pending'  => (new Migrator())->pending(),
-            'php'      => PHP_VERSION,
+            'active'      => 'system',
+            'checks'      => $checks,
+            'health'      => Diagnostics::worst($checks),
+            'metrics'     => Metrics::requests(24),
+            'storage'     => Metrics::storage(),
+            'queue'       => Queue::stats(),
+            'schedule'    => Scheduler::tasks(),
+            'events'      => Events::registered(),
+            'settings'    => Setting::all(),
+            'pending'     => (new Migrator())->pending(),
+            'maintenance' => Maintenance::active() ? Maintenance::payload() : null,
+            'php'         => PHP_VERSION,
         ], 'Состояние');
     }
 
@@ -129,6 +131,24 @@ final class SystemController extends Controller
                 Audit::action('system', 0, $applied === [] ? 'накат миграций из панели: новых нет' : 'применены миграции: ' . implode(', ', $applied));
 
                 $this->flash($applied === [] ? 'Новых миграций нет' : 'Применены: ' . implode(', ', $applied));
+
+                break;
+
+            case 'maintenance-on':
+                Maintenance::activate((string) $request->input('maintenance_message', ''));
+
+                Audit::action('system', 0, 'включён режим обслуживания');
+
+                $this->flash('Режим обслуживания включён — свои (system.manage) работают как обычно');
+
+                break;
+
+            case 'maintenance-off':
+                Maintenance::deactivate();
+
+                Audit::action('system', 0, 'выключен режим обслуживания');
+
+                $this->flash('Режим обслуживания выключен');
 
                 break;
 

@@ -14,6 +14,7 @@ declare(strict_types=1);
  * @var array<string, int> $events
  * @var array<string, string> $settings
  * @var array<int, string> $pending
+ * @var array{message: string, allow: string, retry: int, since: int}|null $maintenance
  * @var string $php
  */
 
@@ -187,6 +188,33 @@ $labels = [Diagnostics::OK => 'в порядке', Diagnostics::WARN => 'вни�
                     </form>
                 <?php } ?>
             </div>
+
+            <?php if ($maintenance !== null) { ?>
+                <p class="small" style="margin-top: 12px;">
+                    <span class="badge warn">включён</span>
+                    с <?= View::e(View::ago((string) date('Y-m-d H:i:s', $maintenance['since']))) ?>
+                    <?php if ($maintenance['message'] !== '') { ?>
+                        — «<?= View::e($maintenance['message']) ?>»
+                    <?php } ?>
+                    <?php if ($maintenance['allow'] !== '') { ?>
+                        <span class="muted">(без ограничения ещё: <?= View::e($maintenance['allow']) ?>)</span>
+                    <?php } ?>
+                </p>
+
+                <form method="post" action="<?= View::e(View::route('admin.system.action', ['action' => 'maintenance-off'])) ?>" style="margin-top: 8px;">
+                    <?= View::csrf() ?>
+                    <button type="submit" class="primary">Выключить режим обслуживания</button>
+                </form>
+            <?php } else { ?>
+                <form method="post" action="<?= View::e(View::route('admin.system.action', ['action' => 'maintenance-on'])) ?>" style="margin-top: 12px;">
+                    <?= View::csrf() ?>
+                    <label>
+                        <span>Сообщение посетителям (необязательно)</span>
+                        <input type="text" name="maintenance_message" maxlength="191" placeholder="Обновляем базу, вернёмся через 10 минут">
+                    </label>
+                    <button type="submit" class="danger" data-confirm="Включить режим обслуживания? Сайт станет недоступен всем, кроме system.manage.">Включить режим обслуживания</button>
+                </form>
+            <?php } ?>
         <?php } else { ?>
             <p class="muted small">Кнопки обслуживания доступны с правом system.manage.</p>
         <?php } ?>

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Rsgrinko\Proton\Http;
 
 use Rsgrinko\Proton\Access\AccessDenied;
+use Rsgrinko\Proton\Access\Permission;
 use Rsgrinko\Proton\Auth\Auth;
 use Rsgrinko\Proton\Auth\Csrf;
 use Rsgrinko\Proton\Database\Model\RecordNotFound;
@@ -20,6 +21,7 @@ use Rsgrinko\Proton\Http\Middleware\Throttle;
 use Rsgrinko\Proton\Http\Middleware\VerifyCsrf;
 use Rsgrinko\Proton\Support\Config;
 use Rsgrinko\Proton\Support\Logger;
+use Rsgrinko\Proton\Support\Maintenance;
 use Rsgrinko\Proton\Support\Metrics;
 use Rsgrinko\Proton\Support\ProtonException;
 use Rsgrinko\Proton\Support\RequestId;
@@ -57,7 +59,9 @@ final class Kernel
         Settings::apply();
 
         try {
-            $response = $this->finish($this->blocked($request) ?? $this->router()->dispatch($request));
+            $response = $this->finish(
+                $this->maintenance($request) ?? $this->blocked($request) ?? $this->router()->dispatch($request)
+            );
         } catch (AccessDenied $e) {
             $response = $this->finish($this->denied($request, $e));
         } catch (RecordNotFound $e) {
@@ -118,6 +122,32 @@ final class Kernel
     {
         return Csrf::applyCookie(Auth::applyCookies($response))
             ->withHeader(RequestId::HEADER, RequestId::current());
+    }
+
+    /**
+     * Режим обслуживания разворачиваем до маршрутов и до блокировки по IP:
+     * своему администратору (право system.manage) он не мешает — иначе
+     * править что-то на живую под собственным же режимом обслуживания
+     * пришлось бы через отдельный allow-список. Пустой ответ — режим выключен.
+     */
+    private function maintenance(Request $request): ?Response
+    {
+        if (!Maintenance::active()) {
+            return null;
+        }
+
+        if (Maintenance::allows($request->ip()) || Auth::viewer()->can(Permission::SYSTEM_MANAGE)) {
+            return null;
+        }
+
+        $payload = Maintenance::payload();
+        $message = $payload['message'] !== '' ? $payload['message'] : 'Идут технические работы, зайдите чуть позже.';
+
+        $response = $request->wantsJson()
+            ? Response::error($message, 503)
+            : Response::html(View::render('errors/503', ['message' => $message], 'Технические работы'), 503);
+
+        return $payload['retry'] > 0 ? $response->withHeader('Retry-After', (string) $payload['retry']) : $response;
     }
 
     /**

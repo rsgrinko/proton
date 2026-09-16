@@ -25,6 +25,8 @@ final class Application
     private const COMMANDS = [
         'Установка и обслуживание' => [
             Commands\InstallCommand::class,
+            Commands\DownCommand::class,
+            Commands\UpCommand::class,
             Commands\MigrateCommand::class,
             Commands\MigrateStatusCommand::class,
             Commands\MigrateRollbackCommand::class,
