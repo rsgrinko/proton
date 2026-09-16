@@ -15,6 +15,12 @@ use App\Controllers\Api\SystemController;
 use Rsgrinko\Proton\Http\Router;
 
 return static function (Router $router): void {
+    // Отдельно от /api/v1: так его ждёт Prometheus, и путь короче в конфиге
+    // сборщика. Ключа нет — вместо него список адресов METRICS_ALLOW
+    $router->get('/metrics', [SystemController::class, 'prometheus'])
+        ->middleware('throttle:60,60')
+        ->name('metrics.prometheus');
+
     $router->group(['prefix' => '/api/v1'], function (Router $router): void {
         // Входящие вебхуки: ключа у чужой системы нет, вместо него подпись.
         // Частоту всё равно ограничиваем — источник может залипнуть в цикле

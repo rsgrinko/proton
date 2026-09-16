@@ -7,11 +7,13 @@ namespace App\Controllers\Api;
 use Rsgrinko\Proton\Access\Permission;
 use Rsgrinko\Proton\Access\Viewer;
 use Rsgrinko\Proton\Database\Connection;
+use Rsgrinko\Proton\Http\Request;
 use Rsgrinko\Proton\Http\Response;
 use Rsgrinko\Proton\Models\ApiToken;
 use Rsgrinko\Proton\Models\User;
 use Rsgrinko\Proton\Queue\Queue;
 use Rsgrinko\Proton\Support\Config;
+use Rsgrinko\Proton\Support\IpAllowlist;
 use Rsgrinko\Proton\Support\Metrics;
 use Throwable;
 
@@ -52,6 +54,22 @@ final class SystemController extends ApiController
         }
 
         return $this->data(Metrics::snapshot());
+    }
+
+    /**
+     * Тот же снимок текстом для Prometheus. Ключа нет — у сборщика его обычно
+     * не бывает, поэтому закрыто списком адресов METRICS_ALLOW: пустой список
+     * не пускает никого, это недописанная настройка, а не «для всех».
+     */
+    public function prometheus(Request $request): Response
+    {
+        $allow = trim((string) Config::get('metrics.allow', ''));
+
+        if (!IpAllowlist::allows($allow, $request->ip())) {
+            return Response::error('Адрес ' . $request->ip() . ' не в списке METRICS_ALLOW', 403);
+        }
+
+        return Response::text(Metrics::prometheus());
     }
 
     /**

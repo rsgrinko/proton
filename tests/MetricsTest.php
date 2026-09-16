@@ -50,6 +50,20 @@ test('показатели: снимок отвечает без запущен�
     assertTrue(($snapshot['storage']['var_bytes'] ?? -1) >= 0);
 });
 
+test('показатели: тот же снимок читается в формате Prometheus', function (): void {
+    $text = Metrics::prometheus();
+
+    assertMatches('/^# HELP proton_users_total /m', $text);
+    assertMatches('/^# TYPE proton_users_total gauge$/m', $text);
+    assertMatches('/^proton_users_total \d+$/m', $text);
+
+    // Метки берутся из состояний очереди — они всегда на месте, даже пустой
+    assertMatches('/^proton_queue_jobs\{status="queued"\} \d+$/m', $text);
+
+    // Пустой ключ разбивки превращается в «unknown», а не в кавычки без имени
+    assertNotContains('{status=""}', $text);
+});
+
 test('присмотр: порог сработал — сообщение уходит один раз за окно', function (): void {
     Cache::flush();
 

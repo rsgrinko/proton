@@ -585,6 +585,25 @@ test('api: здоровье отвечает без ключа и разбито
     assertTrue(isset($payload['checks']['queue']['status']), 'очередь проверяется отдельно');
 });
 
+test('api: метрики для Prometheus закрыты списком адресов', function (): void {
+    // Без настройки METRICS_ALLOW эндпоинт не пускает никого — это
+    // недописанная настройка, а не «открыто для всех»
+    withConfig(['metrics.allow' => ''], static function (): void {
+        assertStatus(403, httpRequest('GET', '/metrics'));
+    });
+
+    // В тестах REMOTE_ADDR не задан, Request::ip() отдаёт 'unknown' —
+    // разрешаем ровно его, чтобы проверить сам путь допуска
+    withConfig(['metrics.allow' => 'unknown'], static function (): void {
+        $response = httpRequest('GET', '/metrics');
+
+        assertStatus(200, $response);
+        assertContains('proton_users_total', $response->body());
+        assertContains('proton_queue_jobs{status="', $response->body());
+        assertContains('# TYPE proton_users_total gauge', $response->body());
+    });
+});
+
 test('api: ошибки приходят в едином формате', function (): void {
     $response = httpRequest('GET', '/api/v1/notes');
 

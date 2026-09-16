@@ -129,6 +129,64 @@ final class Metrics
     }
 
     /**
+     * Тот же снимок в текстовом формате Prometheus — строкой, без своего
+     * клиента и без завязки на конкретный сборщик: любой Prometheus понимает
+     * формат из коробки, Grafana тянет его через него же.
+     *
+     *     GET /metrics
+     *
+     * Открыт не всем подряд, а списку адресов (METRICS_ALLOW) — у сборщика
+     * обычно нет API-ключа, зато есть свой адрес, с которого он ходит.
+     */
+    public static function prometheus(): string
+    {
+        $snapshot = self::snapshot();
+        $lines    = [];
+
+        $gauge = static function (string $name, string $help, int|float $value) use (&$lines): void {
+            $lines[] = '# HELP ' . $name . ' ' . $help;
+            $lines[] = '# TYPE ' . $name . ' gauge';
+            $lines[] = $name . ' ' . $value;
+        };
+
+        $byLabel = static function (string $name, string $help, string $label, array $values) use (&$lines): void {
+            $lines[] = '# HELP ' . $name . ' ' . $help;
+            $lines[] = '# TYPE ' . $name . ' gauge';
+
+            foreach ($values as $key => $value) {
+                $key = (string) $key === '' || (string) $key === '—' ? 'unknown' : (string) $key;
+
+                $lines[] = $name . '{' . $label . '="' . addcslashes($key, '"\\') . '"} ' . $value;
+            }
+        };
+
+        $gauge('proton_users_total', 'Всего пользователей', $snapshot['users']['total']);
+        $gauge('proton_users_active', 'Активных пользователей', $snapshot['users']['active']);
+        $gauge('proton_users_new_24h', 'Заведено пользователей за сутки', $snapshot['users']['new_24h']);
+
+        $gauge('proton_requests_24h', 'Запросов за сутки', $snapshot['requests']['requests'] ?? 0);
+        $gauge('proton_requests_average_ms', 'Среднее время ответа за сутки, мс', $snapshot['requests']['average_ms'] ?? 0);
+        $gauge('proton_requests_errors_24h', 'Ответов 5xx за сутки', $snapshot['requests']['errors'] ?? 0);
+        $gauge('proton_requests_slow_24h', 'Медленных ответов за сутки', $snapshot['requests']['slow'] ?? 0);
+
+        $byLabel('proton_queue_jobs', 'Задач в очереди по состоянию', 'status', $snapshot['queue']);
+        $byLabel('proton_webhook_deliveries_24h', 'Посылок вебхуков за сутки по состоянию', 'status', $snapshot['webhooks']);
+
+        $gauge('proton_audit_logins_24h', 'Входов за сутки', $snapshot['audit']['logins_24h']);
+        $gauge('proton_audit_entries_24h', 'Записей в журнале за сутки', $snapshot['audit']['total_24h']);
+
+        $gauge('proton_notifications_unread', 'Непрочитанных уведомлений', $snapshot['notifications']['unread']);
+
+        $byLabel('proton_storage_bytes', 'Место в байтах: база, var и свободно на диске', 'kind', [
+            'database' => (int) $snapshot['storage']['database_bytes'],
+            'var'      => (int) $snapshot['storage']['var_bytes'],
+            'free'     => (int) $snapshot['storage']['free_bytes'],
+        ]);
+
+        return implode("\n", $lines) . "\n";
+    }
+
+    /**
      * Место: размер базы, папки var и сколько свободно на диске.
      *
      * @return array<string, int|string>

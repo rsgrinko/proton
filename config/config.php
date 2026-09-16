@@ -228,6 +228,10 @@ return [
         'enabled' => Env::bool('METRICS_ENABLED', true),
         // С какого времени ответа запрос считается медленным, мс
         'slow_ms' => Env::int('METRICS_SLOW_MS', 1000),
+        // GET /metrics для Prometheus: список адресов через запятую (CIDR тоже
+        // можно), пусто — эндпоинт закрыт всем. Ключа API у сборщика обычно
+        // нет, зато есть свой адрес
+        'allow'   => Env::string('METRICS_ALLOW', ''),
     ],
 
     'monitor' => [
