@@ -13,8 +13,18 @@ namespace Rsgrinko\Proton\Support;
  * разбирает вызывающий, исключение бросается только когда соединения не было
  * вовсе: «сервис ответил 500» и «сервис не ответил» — разные вещи.
  *
- * Класс не закрыт от наследования нарочно: тесты подменяют отправку, чтобы
- * не ходить в сеть.
+ * Класс не закрыт от наследования нарочно: тесты, которым нужно подменить
+ * саму реализацию (проверить, что ушло, разными кодами ответа подряд),
+ * наследуются и переопределяют post()/get() — см. WebhookTestClient
+ * в tests/WebhookTest.php. Когда достаточно заранее заданных ответов —
+ * fake() проще и не требует своего класса:
+ *
+ *     HttpClient::fake(['*' => ['status' => 500, 'body' => 'упал']]);
+ *
+ *     // код, который где-то внутри делает (new HttpClient())->post(...)
+ *
+ *     assertSame($url, HttpClient::recorded()[0]['url']);
+ *     HttpClient::reset();
  *
  * Проверку сертификата не отключаем. Там, где у PHP нет хранилища корневых
  * сертификатов (обычная история на Windows), путь к cacert.pem задаётся
@@ -23,9 +33,55 @@ namespace Rsgrinko\Proton\Support;
  */
 class HttpClient
 {
+    /**
+     * Заготовленные ответы по маске адреса (fnmatch) — null, если подмены нет.
+     *
+     * @var array<string, array{status?: int, body?: string}>|null
+     */
+    private static ?array $fakeResponses = null;
+
+    /**
+     * Что успели отправить, пока подмена была включена.
+     *
+     * @var array<int, array{method: string, url: string, body: string, headers: array<int, string>}>
+     */
+    private static array $recorded = [];
+
     public function __construct(private int $timeout = 10)
     {
         $this->timeout = max(1, $this->timeout);
+    }
+
+    /**
+     * Включает подмену: любой request() отсюда отвечает заготовкой, в сеть
+     * никто не ходит. Пустая маска `''` — заглушка на всё подряд.
+     *
+     * @param array<string, array{status?: int, body?: string}> $responses
+     */
+    public static function fake(array $responses = []): void
+    {
+        self::$fakeResponses = $responses;
+        self::$recorded      = [];
+    }
+
+    /**
+     * Выключает подмену и забывает записанные запросы — обязательно
+     * после теста, иначе следующий тоже не пойдёт в сеть.
+     */
+    public static function reset(): void
+    {
+        self::$fakeResponses = null;
+        self::$recorded      = [];
+    }
+
+    /**
+     * Что отправили, пока подмена была включена — самый свежий последним.
+     *
+     * @return array<int, array{method: string, url: string, body: string, headers: array<int, string>}>
+     */
+    public static function recorded(): array
+    {
+        return self::$recorded;
     }
 
     /**
@@ -79,6 +135,10 @@ class HttpClient
      */
     public function request(string $method, string $url, string $body = '', array $headers = []): array
     {
+        if (self::$fakeResponses !== null) {
+            return $this->fakeRequest($method, $url, $body, $headers);
+        }
+
         $started = microtime(true);
 
         $response = function_exists('curl_init')
@@ -88,6 +148,31 @@ class HttpClient
         $response['duration'] = (int) round((microtime(true) - $started) * 1000);
 
         return $response;
+    }
+
+    /**
+     * @param array<int, string> $headers
+     *
+     * @return array{status: int, body: string, duration: int}
+     */
+    private function fakeRequest(string $method, string $url, string $body, array $headers): array
+    {
+        self::$recorded[] = ['method' => strtoupper($method), 'url' => $url, 'body' => $body, 'headers' => $headers];
+
+        foreach (self::$fakeResponses as $pattern => $response) {
+            if ($pattern === '' || $pattern === '*' || fnmatch($pattern, $url)) {
+                return [
+                    'status'   => (int) ($response['status'] ?? 200),
+                    'body'     => (string) ($response['body'] ?? ''),
+                    'duration' => 0,
+                ];
+            }
+        }
+
+        // Маска не нашлась — заготовки не спрашивали именно про этот адрес,
+        // а не «сервис недоступен»: тесту нечего чинить в сети, если он сам
+        // не позаботился о заготовке
+        return ['status' => 200, 'body' => '', 'duration' => 0];
     }
 
     /**

@@ -95,6 +95,28 @@ withConfig(['auth.registration' => false], static function (): void {
 **`testDatabaseFile('имя')`** — база-файлом, когда её должен увидеть второй процесс
 (воркер, сервер, блокировка).
 
+**`HttpClient::fake([...])`** — чужой сервис отвечает заготовкой, в сеть никто не
+ходит. Обязательно `HttpClient::reset()` после, иначе следующий тест тоже не пойдёт
+в сеть:
+
+```php
+HttpClient::fake(['*/api/v1/messages' => ['status' => 500, 'body' => '{"error":"..."}']]);
+
+try {
+    // код, который где-то внутри делает (new HttpClient())->post(...)
+
+    assertSame('POST', HttpClient::recorded()[0]['method']);
+} finally {
+    HttpClient::reset();
+}
+```
+
+Своей маски адреса нет — подмена отвечает пустым 200: тесту, которому нужен код
+ответа, придётся его задать явно, а не полагаться на «пришло же что-то». Когда
+нужно не готовый ответ, а проверить логику самого клиента (разные коды подряд,
+исключение на середине) — наследник `HttpClient`, как `WebhookTestClient`
+в `tests/WebhookTest.php`.
+
 ## Что покрыто сейчас
 
 `AuthTest` — вход, «запомнить меня», сеансы и права; `DatabaseTest` и `ModelTest` —

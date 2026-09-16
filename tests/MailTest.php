@@ -8,11 +8,13 @@ declare(strict_types=1);
 
 use Rsgrinko\Proton\Events\Events;
 use Rsgrinko\Proton\Mail\Drivers\DriverInterface;
+use Rsgrinko\Proton\Mail\Drivers\MailerServiceDriver;
 use Rsgrinko\Proton\Mail\Mail;
 use Rsgrinko\Proton\Mail\Message;
 use Rsgrinko\Proton\Mail\Mime;
 use Rsgrinko\Proton\Mail\SendMailJob;
 use Rsgrinko\Proton\Queue\Queue;
+use Rsgrinko\Proton\Support\HttpClient;
 use Rsgrinko\Proton\Support\ProtonException;
 
 /**
@@ -187,4 +189,59 @@ test('почта: письмо переживает дорогу через оч
     assertSame($original->copies(), $restored->copies());
     assertSame('метка', $restored->extraHeaders()['X-Mark']);
     assertSame('содержимое', $restored->attachments()[0]['content']);
+});
+
+test('почта: сервис по HTTP получает письмо правильным запросом', function (): void {
+    HttpClient::fake(['*/api/v1/messages' => ['status' => 200, 'body' => '{"ok":true}']]);
+
+    try {
+        withConfig([
+            'mail.service.url' => 'https://mail.example.com',
+            'mail.service.key' => 'секретный-ключ',
+        ], static function (): void {
+            $message = Message::to('user@example.com')
+                ->from('robot@example.com')
+                ->subject('Через сервис')
+                ->text('тело письма');
+
+            (new MailerServiceDriver())->send($message);
+        });
+
+        $sent = HttpClient::recorded();
+
+        assertCount(1, $sent);
+        assertSame('POST', $sent[0]['method']);
+        assertSame('https://mail.example.com/api/v1/messages', $sent[0]['url']);
+        assertTrue(
+            in_array('Authorization: Bearer секретный-ключ', $sent[0]['headers'], true),
+            'ключ ушёл заголовком авторизации'
+        );
+
+        $body = (array) json_decode($sent[0]['body'], true);
+
+        assertSame(['user@example.com'], $body['to'] ?? null);
+        assertSame('Через сервис', $body['subject'] ?? null);
+    } finally {
+        HttpClient::reset();
+    }
+});
+
+test('почта: сервис ответил ошибкой — понятное сообщение, а не голый код', function (): void {
+    HttpClient::fake(['*' => ['status' => 422, 'body' => '{"error":{"message":"нет получателя"}}']]);
+
+    try {
+        withConfig([
+            'mail.service.url' => 'https://mail.example.com',
+            'mail.service.key' => 'ключ',
+        ], static function (): void {
+            $message = Message::to('user@example.com')->from('robot@example.com')->subject('т')->text('т');
+
+            $error = assertThrows(static fn () => (new MailerServiceDriver())->send($message));
+
+            assertContains('422', $error->getMessage());
+            assertContains('нет получателя', $error->getMessage());
+        });
+    } finally {
+        HttpClient::reset();
+    }
 });
