@@ -262,6 +262,7 @@ php bin/proton serve                 встроенный сервер для р
 php bin/proton test [--filter=]      тесты
 php bin/proton make:crud <Имя> --fields="имя:тип:подпись,…"   раздел целиком
 php bin/proton make:model|make:controller|make:migration|make:job|make:command|make:test
+php bin/proton tinker [--execute=код]  интерактивная консоль с доступом к моделям
 php bin/proton worker [--once] [--queue=default,webhooks]|worker:restart|schedule:run
 php bin/proton queue:status|queue:retry|queue:purge
 php bin/proton user:create|user:list|user:password|user:delete|role:list

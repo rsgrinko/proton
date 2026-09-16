@@ -47,6 +47,7 @@ final class Application
             Commands\MakeJobCommand::class,
             Commands\MakeCommandCommand::class,
             Commands\MakeTestCommand::class,
+            Commands\TinkerCommand::class,
         ],
         'Очередь и расписание' => [
             Commands\WorkerCommand::class,
