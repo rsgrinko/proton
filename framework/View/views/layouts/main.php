@@ -184,16 +184,15 @@ $theme = (!$viewer->isGuest() && $viewer->user() !== null) ? $viewer->user()->th
         a.card:hover .value { color: var(--accent); }
 
         table { width: 100%; border-collapse: collapse; }
-        th, td { padding: 5px 8px; text-align: left; border-bottom: 1px solid var(--border); vertical-align: top; }
+        /* По центру строки, не по верхнему краю: с аватаром (36px) и
+           бейджами рядом с однострочным текстом «по верху» смотрелось
+           обрезанным — у многострочных ячеек соседи просто держатся середины */
+        th, td { padding: 5px 8px; text-align: left; border-bottom: 1px solid var(--border); vertical-align: middle; }
         th { color: var(--muted); font-weight: 650; font-size: 10.5px; text-transform: uppercase; letter-spacing: .03em; }
         tr:last-child td { border-bottom: none; }
         /* Список построчно — почти любая таблица в панели: полоса через
            строку держит взгляд на нужной ячейке в плотной сетке */
         table.list tr:nth-child(even) { background: var(--bg); }
-        /* Аватар (36px) выше строки текста рядом с ним — по верхнему краю
-           это смотрится обрезанным, по центру строки — как обычная строка
-           списка */
-        table.list td { vertical-align: middle; }
         .table-wrap { overflow-x: auto; }
 
         .badge {
