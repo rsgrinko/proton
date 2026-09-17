@@ -9,6 +9,7 @@ use Rsgrinko\Proton\Database\Connection;
 use Rsgrinko\Proton\Database\Model\Model;
 use Rsgrinko\Proton\Database\Model\Relations\BelongsTo;
 use Rsgrinko\Proton\Database\Model\Relations\HasMany;
+use Rsgrinko\Proton\Files\Attachment;
 use Rsgrinko\Proton\Files\Storage;
 use Rsgrinko\Proton\Support\Str;
 
@@ -27,6 +28,7 @@ final class User extends Model
         // Профиль сверх минимума ядра: не используются нигде, кроме самой
         // карточки — свободны для своих нужд в приложении поверх фреймворка
         'phone', 'website', 'position', 'location', 'bio',
+        'theme',
     ];
 
     protected array $hidden = ['password_hash'];
@@ -86,15 +88,34 @@ final class User extends Model
     }
 
     /**
-     * Не просто «путь записан», а «файл правда на диске» — иначе битая
+     * 'light' или 'dark' — ровно два значения, никакого «как в системе»:
+     * оформление панели не должно расходиться с тем, что согласовали.
+     */
+    public function theme(): string
+    {
+        return (string) $this->raw('theme') === 'dark' ? 'dark' : 'light';
+    }
+
+    /**
+     * Текущее фото профиля — вложение с entity `avatar`. Их может накопиться
+     * несколько только между загрузкой новой и удалением старой (см.
+     * ProfileController::avatarUpload), поэтому действующее — всегда свежее.
+     */
+    public function avatarAttachment(): ?Attachment
+    {
+        return Attachment::of('avatar', $this->id())[0] ?? null;
+    }
+
+    /**
+     * Не просто «вложение есть», а «файл правда на диске» — иначе битая
      * ссылка (файл потёрли в обход загрузки) рисуется у всех сломанной
      * картинкой вместо заглушки.
      */
     public function hasAvatar(): bool
     {
-        $path = trim((string) $this->raw('avatar_path'));
+        $attachment = $this->avatarAttachment();
 
-        return $path !== '' && Storage::exists($path);
+        return $attachment !== null && Storage::exists((string) $attachment->path);
     }
 
     public function emailVerified(): bool

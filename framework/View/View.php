@@ -324,9 +324,10 @@ final class View
         $name  = trim((string) ($user->name ?: $user->login));
 
         if ($user->hasAvatar()) {
+            $attachment = $user->avatarAttachment();
             // Хвост в адресе — от пути файла: заменили фото — изменился путь,
             // изменилась и ссылка, старая копия в кэше браузера не мешает
-            $version = substr(md5((string) $user->raw('avatar_path')), 0, 8);
+            $version = substr(md5((string) $attachment->path), 0, 8);
             $url     = self::route('avatar.show', ['id' => $user->id()]) . '?v=' . $version;
 
             return '<img class="' . $class . '" src="' . self::e($url) . '" alt="' . self::e($name) . '">';

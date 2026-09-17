@@ -92,6 +92,14 @@ use Rsgrinko\Proton\View\View;
                 <textarea name="bio" style="min-height: 70px;"><?= View::e((string) $user->bio) ?></textarea>
             </label>
 
+            <label>
+                <span>Тема оформления</span>
+                <select name="theme">
+                    <option value="light" <?= $user->theme() === 'light' ? 'selected' : '' ?>>Светлая</option>
+                    <option value="dark" <?= $user->theme() === 'dark' ? 'selected' : '' ?>>Тёмная</option>
+                </select>
+            </label>
+
             <?php foreach ($fields as $field) { ?>
                 <?php $name = 'meta_' . $field->id(); ?>
                 <?php $value = $metaValues[$field->id()] ?? ''; ?>

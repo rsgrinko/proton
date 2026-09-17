@@ -6,6 +6,7 @@ namespace App\Controllers\Web;
 
 use Rsgrinko\Proton\Auth\Auth;
 use Rsgrinko\Proton\Auth\Devices;
+use Rsgrinko\Proton\Files\Attachment;
 use Rsgrinko\Proton\Files\Storage;
 use Rsgrinko\Proton\Http\Controller;
 use Rsgrinko\Proton\Http\Request;
@@ -26,7 +27,7 @@ use Rsgrinko\Proton\Support\ProtonException;
 final class ProfileController extends Controller
 {
     /** Встроенные поля профиля сверх минимума ядра — не путать со своими, из UserField */
-    private const COLUMNS = ['name', 'email', 'phone', 'website', 'position', 'location', 'bio'];
+    private const COLUMNS = ['name', 'email', 'phone', 'website', 'position', 'location', 'bio', 'theme'];
 
     /** Расширение => MIME: аватар — только растровая картинка, не любой файл из files.allowed */
     private const AVATAR_TYPES = [
@@ -64,11 +65,13 @@ final class ProfileController extends Controller
             'position' => 'nullable|max:191',
             'location' => 'nullable|max:191',
             'bio'      => 'nullable|max:500',
+            'theme'    => 'nullable|in:light,dark',
         ];
 
         $labels = [
             'name' => 'Имя', 'email' => 'Почта', 'phone' => 'Телефон',
             'website' => 'Сайт', 'position' => 'Должность', 'location' => 'Город', 'bio' => 'О себе',
+            'theme' => 'Тема оформления',
         ];
 
         foreach ($fields as $field) {
@@ -119,20 +122,21 @@ final class ProfileController extends Controller
             return $this->redirect('profile');
         }
 
+        // Прежние вложения убираем только после того, как новое легло на
+        // диск и записалось, — иначе при сбое посреди загрузки человек
+        // остался бы без фото вовсе
+        $previous = Attachment::of('avatar', $user->id());
+
         try {
-            $stored = Storage::put($file, 'avatars');
+            Attachment::attach($file, 'avatar', $user->id(), $user->id());
         } catch (ProtonException $e) {
             $this->flash($e->getMessage(), 'error');
 
             return $this->redirect('profile');
         }
 
-        $previous = (string) $user->avatar_path;
-
-        $user->forceFill(['avatar_path' => $stored['path'], 'avatar_mime' => $stored['mime']])->save();
-
-        if ($previous !== '') {
-            Storage::delete($previous);
+        foreach ($previous as $old) {
+            $old->remove();
         }
 
         Audit::action('user', $user->id(), 'сменил фото профиля');
@@ -147,14 +151,11 @@ final class ProfileController extends Controller
      */
     public function avatarDelete(User $user): Response
     {
-        $path = (string) $user->avatar_path;
-
-        if ($path === '') {
+        if (!$user->hasAvatar()) {
             return $this->redirect('profile');
         }
 
-        $user->forceFill(['avatar_path' => '', 'avatar_mime' => ''])->save();
-        Storage::delete($path);
+        Attachment::detachAll('avatar', $user->id());
 
         Audit::action('user', $user->id(), 'убрал фото профиля');
 
@@ -171,16 +172,17 @@ final class ProfileController extends Controller
     public function avatar(int $id): Response
     {
         /** @var User|null $user */
-        $user = User::find($id);
+        $user       = User::find($id);
+        $attachment = $user?->hasAvatar() === true ? $user->avatarAttachment() : null;
 
-        if ($user === null || !$user->hasAvatar()) {
+        if ($attachment === null) {
             return new Response('', 404);
         }
 
         // Ссылка несёт хеш пути файла (View::avatar()): пока фото не заменили,
         // адрес не меняется, и браузеру незачем перекачивать его на каждой
         // странице — без этих заголовков сессия шлёт no-store на любой ответ
-        return Response::file(Storage::path((string) $user->avatar_path), (string) $user->avatar_mime ?: 'application/octet-stream')
+        return Response::file(Storage::path((string) $attachment->path), (string) $attachment->mime ?: 'application/octet-stream')
             ->withHeader('Cache-Control', 'private, max-age=31536000, immutable')
             ->withHeader('Pragma', 'cache')
             ->withHeader('Expires', gmdate('D, d M Y H:i:s', time() + 31536000) . ' GMT');
