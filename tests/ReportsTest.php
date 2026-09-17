@@ -50,6 +50,41 @@ test('отчёты: недели считаются по понедельник�
     });
 });
 
+test('отчёты: сегодняшняя неделя не выпадает из ряда', function (): void {
+    withOwnDatabase(static function (): void {
+        // Баг ловился не всегда: пропадала последняя корзина, если день
+        // недели $from в цикле «позже», чем день недели $to (шаг считался
+        // от дня недели $from, а не от границы корзины)
+        Note::create(['title' => 'сегодня']);
+
+        $series = Reports::series(
+            Note::query(),
+            'created_at',
+            date('Y-m-d', time() - 89 * 86400),
+            date('Y-m-d'),
+            Reports::WEEK
+        );
+
+        assertSame(1, Reports::total($series), 'запись за сегодня должна попасть в ряд недель');
+    });
+});
+
+test('отчёты: текущий месяц не выпадает из ряда', function (): void {
+    withOwnDatabase(static function (): void {
+        Note::create(['title' => 'сегодня']);
+
+        $series = Reports::series(
+            Note::query(),
+            'created_at',
+            date('Y-m-d', time() - 364 * 86400),
+            date('Y-m-d'),
+            Reports::MONTH
+        );
+
+        assertSame(1, Reports::total($series), 'запись за сегодня должна попасть в ряд месяцев');
+    });
+});
+
 test('отчёты: разбивка по колонке идёт от большего', function (): void {
     withOwnDatabase(static function (): void {
         Note::create(['title' => 'раз', 'pinned' => 1]);

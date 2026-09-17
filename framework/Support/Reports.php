@@ -136,13 +136,22 @@ final class Reports
             return [];
         }
 
-        $keys    = [];
-        $current = $start;
+        // Шаг обязан идти точно по границе корзины (понедельник — для недели,
+        // 1-е число — для месяца), а не по дню недели/месяца самого $from:
+        // иначе последняя корзина, в которую попадает «сегодня», в ряд не
+        // попадала, если $from случайно оказывался «позже» по циклу, чем $to
+        // (пятница $from и четверг $to как раз такой случай)
+        $current = match ($step) {
+            self::MONTH => (int) strtotime(date('Y-m-01', $start)),
+            self::WEEK  => (int) strtotime('monday this week', $start),
+            default     => $start,
+        };
+
+        $keys = [];
 
         while ($current <= $end) {
             $keys[] = match ($step) {
                 self::MONTH => date('Y-m', $current),
-                self::WEEK  => date('Y-m-d', (int) strtotime('monday this week', $current)),
                 default     => date('Y-m-d', $current),
             };
 
