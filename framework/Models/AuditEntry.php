@@ -44,6 +44,21 @@ final class AuditEntry extends Model
     ];
 
     /**
+     * Цвет бейджа под действие — по строке в общем списке проще отличить
+     * удаление от входа, чем читать подпись у каждой.
+     *
+     * @var array<string, string>
+     */
+    public const BADGES = [
+        self::CREATED => 'ok',
+        self::UPDATED => 'info',
+        self::DELETED => 'error',
+        self::ACTION  => 'muted',
+        self::LOGIN   => 'ok',
+        self::LOGOUT  => 'muted',
+    ];
+
+    /**
      * @param array<string, array{0: mixed, 1: mixed}> $changes поле => [было, стало]
      */
     public static function write(
@@ -74,6 +89,11 @@ final class AuditEntry extends Model
     public static function label(string $action): string
     {
         return self::LABELS[$action] ?? $action;
+    }
+
+    public static function badge(string $action): string
+    {
+        return self::BADGES[$action] ?? 'muted';
     }
 
     /**

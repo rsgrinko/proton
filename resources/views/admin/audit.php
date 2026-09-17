@@ -35,7 +35,7 @@ use Rsgrinko\Proton\View\View;
                     <tr>
                         <td class="muted small nowrap"><?= View::e(View::date((string) $entry->raw('created_at'))) ?></td>
                         <td><?= View::e((string) $entry->raw('user_login') ?: 'система') ?></td>
-                        <td><span class="badge muted"><?= View::e(AuditEntry::label((string) $entry->raw('action'))) ?></span></td>
+                        <td><span class="badge <?= View::e(AuditEntry::badge((string) $entry->raw('action'))) ?>"><?= View::e(AuditEntry::label((string) $entry->raw('action'))) ?></span></td>
                         <td>
                             <?= View::e((string) $entry->raw('description')) ?>
                             <div class="muted small"><?= View::e((string) $entry->raw('entity')) ?> <?= View::e((string) $entry->raw('entity_id')) ?></div>
@@ -43,7 +43,7 @@ use Rsgrinko\Proton\View\View;
                             <?php if ($changes !== []) { ?>
                                 <details>
                                     <summary class="small">что изменилось</summary>
-                                    <table>
+                                    <table class="diff">
                                         <?php foreach ($changes as $field => $pair) { ?>
                                             <tr>
                                                 <td class="muted small"><?= View::e((string) $field) ?></td>

@@ -71,7 +71,7 @@ $inner = static function (array $widget): string {
                             <td class="muted small nowrap"><?= View::e(View::date((string) $event->raw('created_at'))) ?></td>
                             <td><?= View::e((string) $event->raw('user_login')) ?></td>
                             <td>
-                                <span class="badge muted"><?= View::e(AuditEntry::label((string) $event->raw('action'))) ?></span>
+                                <span class="badge <?= View::e(AuditEntry::badge((string) $event->raw('action'))) ?>"><?= View::e(AuditEntry::label((string) $event->raw('action'))) ?></span>
                                 <?= View::e((string) $event->raw('description')) ?>
                             </td>
                         </tr>
