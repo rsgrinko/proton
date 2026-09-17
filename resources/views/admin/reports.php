@@ -30,7 +30,7 @@ $stepLabel = match ($step) {
     <div class="row">
         <?php foreach ($ranges as $value => $label) { ?>
             <?php if ((int) $value === $days) { ?>
-                <span class="badge info"><?= View::e($label) ?></span>
+                <span class="btn small primary"><?= View::e($label) ?></span>
             <?php } else { ?>
                 <a class="btn small" href="<?= View::e(View::route('admin.reports', ['days' => $value])) ?>"><?= View::e($label) ?></a>
             <?php } ?>
