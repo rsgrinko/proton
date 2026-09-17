@@ -13,5 +13,5 @@ declare(strict_types=1);
 
 use Rsgrinko\Proton\Access\Permission;
 
-Permission::register('notes.view', 'Смотреть заметки', 'Заметки');
-Permission::register('notes.manage', 'Заводить и править заметки', 'Заметки');
+Permission::register('notes.view', 'Просмотр заметок', 'Заметки');
+Permission::register('notes.manage', 'Управление заметками', 'Заметки');
