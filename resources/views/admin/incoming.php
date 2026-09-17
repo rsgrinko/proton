@@ -10,11 +10,13 @@ declare(strict_types=1);
  * @var array<string, array{label: string, token: string, handler: callable}> $sources
  */
 
+use Rsgrinko\Proton\Access\Permission;
 use Rsgrinko\Proton\Models\IncomingHook;
 use Rsgrinko\Proton\Support\Config;
 use Rsgrinko\Proton\View\View;
 
-$base = rtrim((string) Config::get('app.url', ''), '/');
+$canManage = View::can(Permission::WEBHOOKS_MANAGE);
+$base      = rtrim((string) Config::get('app.url', ''), '/');
 
 /**
  * Тело посылки человеку: в базе оно лежит как есть, на экране — с отступами.
@@ -148,11 +150,13 @@ $pretty = static function (mixed $payload): string {
                             <?php } ?>
                         </td>
                         <td class="right">
+                            <?php if ($canManage) { ?>
                             <form method="post" action="<?= View::e(View::route('admin.webhooks.incoming.test')) ?>">
                                 <?= View::csrf() ?>
                                 <input type="hidden" name="source" value="<?= View::e((string) $key) ?>">
                                 <button type="submit">Проверить</button>
                             </form>
+                            <?php } ?>
                         </td>
                     </tr>
                 <?php } ?>

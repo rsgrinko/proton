@@ -9,8 +9,11 @@ declare(strict_types=1);
  * @var array<string, mixed> $values текущие значения
  */
 
+use Rsgrinko\Proton\Access\Permission;
 use Rsgrinko\Proton\Support\Settings;
 use Rsgrinko\Proton\View\View;
+
+$canManage = View::can(Permission::SETTINGS_MANAGE);
 ?>
 <h1>Настройки</h1>
 
@@ -28,6 +31,7 @@ use Rsgrinko\Proton\View\View;
 
 <form method="post" action="<?= View::e(View::route('admin.settings')) ?>">
     <?= View::csrf() ?>
+    <fieldset <?= $canManage ? '' : 'disabled' ?> style="border: 0; padding: 0; margin: 0;">
 
     <?php foreach ($groups as $title => $items) { ?>
         <div class="card">
@@ -79,11 +83,15 @@ use Rsgrinko\Proton\View\View;
         </div>
     <?php } ?>
 
-    <div class="card">
-        <div class="row">
-            <button type="submit" class="primary">Сохранить</button>
+    </fieldset>
+
+    <?php if ($canManage) { ?>
+        <div class="card">
+            <div class="row">
+                <button type="submit" class="primary">Сохранить</button>
+            </div>
         </div>
-    </div>
+    <?php } ?>
 </form>
 
 <?php
@@ -101,20 +109,21 @@ foreach ($groups as $items) {
 <?php if ($overridden !== []) { ?>
     <div class="card">
         <h2>Изменённые настройки</h2>
-        <p class="muted small">Эти значения взяты из базы. Сброс вернёт то, что задано в <span class="mono">.env</span>.</p>
+        <p class="muted small">Эти значения взяты из базы<?= $canManage ? '. Сброс вернёт то, что задано в <span class="mono">.env</span>.' : '.' ?></p>
 
         <div class="table-wrap">
             <table class="list">
                 <tr class="head">
                     <th>Настройка</th>
                     <th>Ключ</th>
-                    <th></th>
+                    <?php if ($canManage) { ?><th></th><?php } ?>
                 </tr>
 
                 <?php foreach ($overridden as $key => $label) { ?>
                     <tr>
                         <td><?= View::e($label) ?></td>
                         <td class="mono small"><?= View::e($key) ?></td>
+                        <?php if ($canManage) { ?>
                         <td class="right">
                             <form method="post" action="<?= View::e(View::route('admin.settings.reset')) ?>">
                                 <?= View::csrf() ?>
@@ -122,6 +131,7 @@ foreach ($groups as $items) {
                                 <button type="submit">Сбросить</button>
                             </form>
                         </td>
+                        <?php } ?>
                     </tr>
                 <?php } ?>
             </table>

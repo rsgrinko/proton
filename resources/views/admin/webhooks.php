@@ -11,12 +11,14 @@ declare(strict_types=1);
  * @var \Rsgrinko\Proton\Support\Filters $filters
  */
 
+use Rsgrinko\Proton\Access\Permission;
 use Rsgrinko\Proton\Models\IncomingHook;
 use Rsgrinko\Proton\Models\Webhook;
 use Rsgrinko\Proton\Models\WebhookDelivery;
 use Rsgrinko\Proton\View\View;
 
-$events = 0;
+$canManage = View::can(Permission::WEBHOOKS_MANAGE);
+$events    = 0;
 
 foreach ($groups as $group) {
     $events += count($group);
@@ -38,9 +40,11 @@ foreach ($groups as $group) {
         не доставлено <?= (int) ($stats[WebhookDelivery::FAILED] ?? 0) ?>.
     </p>
 
-    <div class="row">
-        <a class="btn primary" href="<?= View::e(View::route('admin.webhooks.create')) ?>">Новый вебхук</a>
-    </div>
+    <?php if ($canManage) { ?>
+        <div class="row">
+            <a class="btn primary" href="<?= View::e(View::route('admin.webhooks.create')) ?>">Новый вебхук</a>
+        </div>
+    <?php } ?>
 </div>
 
 <?= View::partial('filters', ['filters' => $filters, 'route' => 'admin.webhooks', 'total' => $page['total']]) ?>
@@ -59,7 +63,7 @@ foreach ($groups as $group) {
                     <th class="hide-sm">События</th>
                     <th>Состояние</th>
                     <th class="hide-sm">Последняя посылка</th>
-                    <th></th>
+                    <?php if ($canManage) { ?><th></th><?php } ?>
                 </tr>
 
                 <?php foreach ($page['items'] as $webhook) { ?>
@@ -90,6 +94,7 @@ foreach ($groups as $group) {
                                 <span class="mono">(<?= (int) $webhook->raw('last_status') ?>)</span>
                             <?php } ?>
                         </td>
+                        <?php if ($canManage) { ?>
                         <td class="right">
                             <div class="row end">
                                 <form method="post" action="<?= View::e(View::route('admin.webhooks.test', ['id' => $webhook->id()])) ?>">
@@ -98,6 +103,7 @@ foreach ($groups as $group) {
                                 </form>
                             </div>
                         </td>
+                        <?php } ?>
                     </tr>
                 <?php } ?>
             </table>

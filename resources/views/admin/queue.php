@@ -12,10 +12,12 @@ declare(strict_types=1);
  * @var array<int, array{name: string, interval: int, at: string, last: string, fromFinish: bool}> $schedule
  */
 
+use Rsgrinko\Proton\Access\Permission;
 use Rsgrinko\Proton\Queue\Queue;
 use Rsgrinko\Proton\View\View;
 
-$badges = [
+$canManage = View::can(Permission::QUEUE_MANAGE);
+$badges    = [
     Queue::QUEUED  => 'info',
     Queue::RUNNING => 'warn',
     Queue::DONE    => 'ok',
@@ -46,7 +48,7 @@ $badges = [
                     <th>Задача</th>
                     <th>Когда</th>
                     <th>Последний раз</th>
-                    <th></th>
+                    <?php if ($canManage) { ?><th></th><?php } ?>
                 </tr>
 
                 <?php foreach ($schedule as $task) { ?>
@@ -59,6 +61,7 @@ $badges = [
                             <?php } ?>
                         </td>
                         <td class="muted small"><?= View::e($task['last'] === '' ? 'ни разу' : View::ago($task['last'])) ?></td>
+                        <?php if ($canManage) { ?>
                         <td class="right">
                             <form method="post" action="<?= View::e(View::route('admin.queue.run')) ?>">
                                 <?= View::csrf() ?>
@@ -66,6 +69,7 @@ $badges = [
                                 <button type="submit" data-confirm="Выполнить «<?= View::e($task['name']) ?>» прямо сейчас?">Выполнить</button>
                             </form>
                         </td>
+                        <?php } ?>
                     </tr>
                 <?php } ?>
             </table>
@@ -81,6 +85,7 @@ $badges = [
     <?php if ($page['items'] === []) { ?>
         <p class="muted">Ничего не нашлось.</p>
     <?php } else { ?>
+        <?php if ($canManage) { ?>
         <form method="post" action="<?= View::e(View::route('admin.queue.retry')) ?>">
             <?= View::csrf() ?>
 
@@ -99,11 +104,12 @@ $badges = [
 
                 <span class="muted small" data-check-count>ничего не отмечено</span>
             </div>
+        <?php } ?>
 
             <div class="table-wrap">
                 <table class="list">
                     <tr class="head">
-                        <th></th>
+                        <?php if ($canManage) { ?><th></th><?php } ?>
                         <th>Задача</th>
                         <th>Очередь</th>
                         <th><?= View::partial('sort', ['filters' => $filters, 'route' => 'admin.queue', 'column' => 'priority', 'label' => 'Важность']) ?></th>
@@ -117,7 +123,7 @@ $badges = [
                     <?php foreach ($page['items'] as $job) { ?>
                         <?php $status = (string) $job['status']; ?>
                         <tr>
-                            <td><input type="checkbox" name="ids[]" value="<?= (int) $job['id'] ?>" data-check-item></td>
+                            <?php if ($canManage) { ?><td><input type="checkbox" name="ids[]" value="<?= (int) $job['id'] ?>" data-check-item></td><?php } ?>
                             <td>
                                 <span class="mono small"><?= View::e((string) $job['job_class']) ?></span>
 
@@ -138,7 +144,7 @@ $badges = [
                     <?php } ?>
                 </table>
             </div>
-        </form>
+        <?php if ($canManage) { ?></form><?php } ?>
 
         <?= View::partial('pagination', [
             'route'  => 'admin.queue',

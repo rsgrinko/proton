@@ -11,14 +11,18 @@ declare(strict_types=1);
  * @var string $fresh только что выданный секрет — показывается один раз
  */
 
+use Rsgrinko\Proton\Access\Permission;
 use Rsgrinko\Proton\Models\Webhook;
 use Rsgrinko\Proton\Models\WebhookDelivery;
 use Rsgrinko\Proton\View\View;
 
-$isNew    = !$webhook->existsInDatabase();
-$action   = $isNew ? View::route('admin.webhooks.create') : View::route('admin.webhooks.show', ['id' => $webhook->id()]);
-$selected = $webhook->events();
-$all      = in_array(Webhook::ALL_EVENTS, $selected, true);
+$isNew     = !$webhook->existsInDatabase();
+$action    = $isNew ? View::route('admin.webhooks.create') : View::route('admin.webhooks.show', ['id' => $webhook->id()]);
+$selected  = $webhook->events();
+$all       = in_array(Webhook::ALL_EVENTS, $selected, true);
+$canManage = View::can(Permission::WEBHOOKS_MANAGE);
+$canDelete = View::can(Permission::WEBHOOKS_DELETE);
+$readOnly  = !$isNew && !$canManage;
 ?>
 <h1><?= $isNew ? 'Новый вебхук' : View::e((string) $webhook->name) ?></h1>
 
@@ -37,12 +41,12 @@ $all      = in_array(Webhook::ALL_EVENTS, $selected, true);
 
         <label>
             <span>Название</span>
-            <input type="text" name="name" value="<?= View::e((string) $webhook->name) ?>" placeholder="склад 1С" <?= $isNew ? 'autofocus' : '' ?>>
+            <input type="text" name="name" value="<?= View::e((string) $webhook->name) ?>" placeholder="склад 1С" <?= $isNew ? 'autofocus' : '' ?> <?= $readOnly ? 'disabled' : '' ?>>
         </label>
 
         <label>
             <span>Адрес подписчика</span>
-            <input type="url" name="url" value="<?= View::e((string) $webhook->url) ?>" placeholder="https://example.com/hooks/proton" required>
+            <input type="url" name="url" value="<?= View::e((string) $webhook->url) ?>" placeholder="https://example.com/hooks/proton" <?= $readOnly ? 'disabled' : '' ?> required>
         </label>
 
         <?php if ($isNew) { ?>
@@ -55,7 +59,7 @@ $all      = in_array(Webhook::ALL_EVENTS, $selected, true);
         <h2 style="margin-top: 16px;">События</h2>
 
         <label class="inline" style="margin-bottom: 6px;">
-            <input type="checkbox" name="events[]" value="<?= View::e(Webhook::ALL_EVENTS) ?>" <?= $all ? 'checked' : '' ?>>
+            <input type="checkbox" name="events[]" value="<?= View::e(Webhook::ALL_EVENTS) ?>" <?= $all ? 'checked' : '' ?> <?= $readOnly ? 'disabled' : '' ?>>
             <span>Все события — в том числе те, что появятся позже</span>
         </label>
 
@@ -66,7 +70,7 @@ $all      = in_array(Webhook::ALL_EVENTS, $selected, true);
                 <?php foreach ($events as $code => $label) { ?>
                     <label class="inline" style="margin-bottom: 6px;">
                         <input type="checkbox" name="events[]" value="<?= View::e($code) ?>"
-                            <?= in_array($code, $selected, true) ? 'checked' : '' ?>>
+                            <?= in_array($code, $selected, true) ? 'checked' : '' ?> <?= $readOnly ? 'disabled' : '' ?>>
                         <span><?= View::e($label) ?> <span class="muted mono"><?= View::e($code) ?></span></span>
                     </label>
                 <?php } ?>
@@ -74,7 +78,7 @@ $all      = in_array(Webhook::ALL_EVENTS, $selected, true);
         <?php } ?>
 
         <div class="row">
-            <button type="submit" class="primary">Сохранить</button>
+            <?php if (!$readOnly) { ?><button type="submit" class="primary">Сохранить</button><?php } ?>
             <a class="btn" href="<?= View::e(View::route('admin.webhooks')) ?>">К списку</a>
         </div>
     </form>
@@ -121,25 +125,29 @@ $all      = in_array(Webhook::ALL_EVENTS, $selected, true);
         </table>
 
         <div class="row" style="margin-top: 12px;">
-            <form method="post" action="<?= View::e(View::route('admin.webhooks.test', ['id' => $webhook->id()])) ?>">
-                <?= View::csrf() ?>
-                <button type="submit" class="primary">Отправить пробную посылку</button>
-            </form>
+            <?php if ($canManage) { ?>
+                <form method="post" action="<?= View::e(View::route('admin.webhooks.test', ['id' => $webhook->id()])) ?>">
+                    <?= View::csrf() ?>
+                    <button type="submit" class="primary">Отправить пробную посылку</button>
+                </form>
 
-            <form method="post" action="<?= View::e(View::route('admin.webhooks.toggle', ['id' => $webhook->id()])) ?>">
-                <?= View::csrf() ?>
-                <button type="submit"><?= (bool) $webhook->active ? 'Отключить' : 'Включить' ?></button>
-            </form>
+                <form method="post" action="<?= View::e(View::route('admin.webhooks.toggle', ['id' => $webhook->id()])) ?>">
+                    <?= View::csrf() ?>
+                    <button type="submit"><?= (bool) $webhook->active ? 'Отключить' : 'Включить' ?></button>
+                </form>
 
-            <form method="post" action="<?= View::e(View::route('admin.webhooks.rotate', ['id' => $webhook->id()])) ?>">
-                <?= View::csrf() ?>
-                <button type="submit">Заменить секрет</button>
-            </form>
+                <form method="post" action="<?= View::e(View::route('admin.webhooks.rotate', ['id' => $webhook->id()])) ?>">
+                    <?= View::csrf() ?>
+                    <button type="submit">Заменить секрет</button>
+                </form>
+            <?php } ?>
 
-            <form method="post" action="<?= View::e(View::route('admin.webhooks.delete', ['id' => $webhook->id()])) ?>">
-                <?= View::csrf() ?>
-                <button type="submit" class="danger">Удалить вебхук</button>
-            </form>
+            <?php if ($canDelete) { ?>
+                <form method="post" action="<?= View::e(View::route('admin.webhooks.delete', ['id' => $webhook->id()])) ?>">
+                    <?= View::csrf() ?>
+                    <button type="submit" class="danger">Удалить вебхук</button>
+                </form>
+            <?php } ?>
         </div>
     </div>
 

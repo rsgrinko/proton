@@ -17,15 +17,28 @@ use Rsgrinko\Proton\Auth\Password;
 use Rsgrinko\Proton\Models\UserField;
 use Rsgrinko\Proton\View\View;
 
-$isNew  = !$user->existsInDatabase();
-$action = $isNew ? View::route('admin.users.create') : View::route('admin.users.show', ['id' => $user->id()]);
-$hint   = $isNew ? 'пусто — придумаем сами' : 'пусто — не менять';
+$isNew     = !$user->existsInDatabase();
+$action    = $isNew ? View::route('admin.users.create') : View::route('admin.users.show', ['id' => $user->id()]);
+$hint      = $isNew ? 'пусто — придумаем сами' : 'пусто — не менять';
+// Новый — только у тех, кто прошёл can:users.manage в маршруте; карточку же
+// существующего человека открывает и users.view — форму правки там не покажем
+$canManage = View::can(Permission::USERS_MANAGE);
+
+$roleName = '—';
+foreach ($roles as $role) {
+    if ($role->id() === (int) $user->raw('role_id')) {
+        $roleName = (string) $role->name;
+
+        break;
+    }
+}
 ?>
 <div class="row">
     <?php if (!$isNew) { ?><?= View::avatar($user) ?><?php } ?>
     <h1 style="margin: 0;"><?= $isNew ? 'Новый пользователь' : View::e((string) $user->login) ?></h1>
 </div>
 
+<?php if ($isNew || $canManage) { ?>
 <div class="card">
     <form method="post" action="<?= View::e($action) ?>">
         <?= View::csrf() ?>
@@ -74,6 +87,28 @@ $hint   = $isNew ? 'пусто — придумаем сами' : 'пусто �
         </div>
     </form>
 </div>
+<?php } else { ?>
+<div class="card">
+    <dl class="props">
+        <dt>Логин</dt>
+        <dd><?= View::e((string) $user->login) ?></dd>
+
+        <dt>Имя</dt>
+        <dd><?= $user->name !== '' ? View::e((string) $user->name) : '<span class="muted">—</span>' ?></dd>
+
+        <dt>Почта</dt>
+        <dd><?= $user->email !== '' ? View::e((string) $user->email) : '<span class="muted">—</span>' ?></dd>
+
+        <dt>Роль</dt>
+        <dd><?= View::e($roleName) ?></dd>
+
+        <dt>Активен</dt>
+        <dd><?= $user->isActive() ? 'да' : 'нет' ?></dd>
+    </dl>
+
+    <p style="margin-top: 12px;"><a class="btn" href="<?= View::e(View::route('admin.users')) ?>">К списку</a></p>
+</div>
+<?php } ?>
 
 <?php if (!$isNew) { ?>
     <div class="card">
@@ -155,15 +190,17 @@ $hint   = $isNew ? 'пусто — придумаем сами' : 'пусто �
         </div>
     <?php } ?>
 
-    <div class="card">
-        <h2>Удаление</h2>
-        <p class="muted small">Пользователь исчезнет вместе со своими сеансами. Его записи останутся.</p>
+    <?php if ($canManage) { ?>
+        <div class="card">
+            <h2>Удаление</h2>
+            <p class="muted small">Пользователь исчезнет вместе со своими сеансами. Его записи останутся.</p>
 
-        <form method="post" action="<?= View::e(View::route('admin.users.delete', ['id' => $user->id()])) ?>">
-            <?= View::csrf() ?>
-            <button type="submit" class="danger">Удалить пользователя</button>
-        </form>
-    </div>
+            <form method="post" action="<?= View::e(View::route('admin.users.delete', ['id' => $user->id()])) ?>">
+                <?= View::csrf() ?>
+                <button type="submit" class="danger">Удалить пользователя</button>
+            </form>
+        </div>
+    <?php } ?>
 <?php } ?>
 
 <?php if ($user->id() > 0) { ?>

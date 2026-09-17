@@ -12,8 +12,11 @@ declare(strict_types=1);
  * @var bool $ftp задан ли FTP для отправки копий
  */
 
+use Rsgrinko\Proton\Access\Permission;
 use Rsgrinko\Proton\Backup\Backup;
 use Rsgrinko\Proton\View\View;
+
+$canManage = View::can(Permission::BACKUPS_MANAGE);
 ?>
 <h1>Резервные копии</h1>
 
@@ -55,12 +58,14 @@ use Rsgrinko\Proton\View\View;
         </tr>
     </table>
 
-    <div class="row" style="margin-top: 12px;">
-        <form method="post" action="<?= View::e(View::route('admin.backups.store')) ?>">
-            <?= View::csrf() ?>
-            <button type="submit" class="primary">Сделать копию</button>
-        </form>
-    </div>
+    <?php if ($canManage) { ?>
+        <div class="row" style="margin-top: 12px;">
+            <form method="post" action="<?= View::e(View::route('admin.backups.store')) ?>">
+                <?= View::csrf() ?>
+                <button type="submit" class="primary">Сделать копию</button>
+            </form>
+        </div>
+    <?php } ?>
 
     <p class="muted small">
         Восстановление — только из консоли: <span class="mono">php bin/proton backup:restore &lt;файл&gt; --force</span>.
@@ -80,7 +85,7 @@ use Rsgrinko\Proton\View\View;
                     <th>Файл</th>
                     <th>Размер</th>
                     <th class="hide-sm">Когда</th>
-                    <th></th>
+                    <?php if ($canManage) { ?><th></th><?php } ?>
                 </tr>
 
                 <?php foreach ($files as $file) { ?>
@@ -88,6 +93,7 @@ use Rsgrinko\Proton\View\View;
                         <td class="mono small break"><?= View::e($file['name']) ?></td>
                         <td><?= View::e(Backup::size($file['size'])) ?></td>
                         <td class="hide-sm muted small"><?= View::e(View::date($file['created'])) ?></td>
+                        <?php if ($canManage) { ?>
                         <td class="right">
                             <div class="row end">
                                 <form method="post" action="<?= View::e(View::route('admin.backups.download')) ?>">
@@ -117,6 +123,7 @@ use Rsgrinko\Proton\View\View;
                                 </form>
                             </div>
                         </td>
+                        <?php } ?>
                     </tr>
                 <?php } ?>
             </table>

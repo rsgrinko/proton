@@ -18,12 +18,14 @@ declare(strict_types=1);
  * @var string $php
  */
 
+use Rsgrinko\Proton\Access\Permission;
 use Rsgrinko\Proton\Support\Diagnostics;
 use Rsgrinko\Proton\Support\Str;
 use Rsgrinko\Proton\View\View;
 
-$badges = [Diagnostics::OK => 'ok', Diagnostics::WARN => 'warn', Diagnostics::ERROR => 'error'];
-$labels = [Diagnostics::OK => 'в порядке', Diagnostics::WARN => 'внимание', Diagnostics::ERROR => 'проблема'];
+$badges    = [Diagnostics::OK => 'ok', Diagnostics::WARN => 'warn', Diagnostics::ERROR => 'error'];
+$labels    = [Diagnostics::OK => 'в порядке', Diagnostics::WARN => 'внимание', Diagnostics::ERROR => 'проблема'];
+$canManage = View::can(Permission::SYSTEM_MANAGE);
 ?>
 <h1>Состояние</h1>
 
@@ -92,7 +94,7 @@ $labels = [Diagnostics::OK => 'в порядке', Diagnostics::WARN => 'вни�
             </table>
         </div>
 
-        <?php if (View::can('system.manage')) { ?>
+        <?php if (View::can(Permission::SYSTEM_MANAGE)) { ?>
             <div class="row" style="margin-top: 12px;">
                 <form method="post" action="<?= View::e(View::route('admin.system.action', ['action' => 'queue-retry'])) ?>">
                     <?= View::csrf() ?>
@@ -138,7 +140,7 @@ $labels = [Diagnostics::OK => 'в порядке', Diagnostics::WARN => 'вни�
             </div>
         <?php } ?>
 
-        <?php if (View::can('system.manage')) { ?>
+        <?php if (View::can(Permission::SYSTEM_MANAGE)) { ?>
             <form method="post" action="<?= View::e(View::route('admin.system.action', ['action' => 'schedule-run'])) ?>" style="margin-top: 12px;">
                 <?= View::csrf() ?>
                 <button type="submit">Выполнить, что пора</button>
@@ -175,7 +177,7 @@ $labels = [Diagnostics::OK => 'в порядке', Diagnostics::WARN => 'вни�
             он держит загруженные классы в памяти, и задачи продолжали бы выполняться старым кодом.
         </p>
 
-        <?php if (View::can('system.manage')) { ?>
+        <?php if (View::can(Permission::SYSTEM_MANAGE)) { ?>
             <div class="row">
                 <form method="post" action="<?= View::e(View::route('admin.system.action', ['action' => 'worker-restart'])) ?>">
                     <?= View::csrf() ?>

@@ -12,12 +12,16 @@ declare(strict_types=1);
  * @var array<string, int> $top самые шумные адреса за сутки
  */
 
+use Rsgrinko\Proton\Access\Permission;
 use Rsgrinko\Proton\Models\SecurityEvent;
 use Rsgrinko\Proton\View\View;
+
+$canManage = View::can(Permission::SECURITY_MANAGE);
 ?>
 <h1>Безопасность</h1>
 
 <div class="grid cols-2">
+    <?php if ($canManage) { ?>
     <div class="card">
         <h2>Закрыть адрес</h2>
 
@@ -47,6 +51,7 @@ use Rsgrinko\Proton\View\View;
             </div>
         </form>
     </div>
+    <?php } ?>
 
     <div class="card">
         <h2>Кого подбирают</h2>
@@ -75,6 +80,7 @@ use Rsgrinko\Proton\View\View;
                                 <td class="mono small"><?= View::e((string) $ip) ?></td>
                                 <td class="right"><?= (int) $count ?></td>
                                 <td class="right">
+                                    <?php if ($canManage) { ?>
                                     <form method="post" action="<?= View::e(View::route('admin.security.block')) ?>">
                                         <?= View::csrf() ?>
                                         <input type="hidden" name="ip" value="<?= View::e((string) $ip) ?>">
@@ -82,6 +88,7 @@ use Rsgrinko\Proton\View\View;
                                         <input type="hidden" name="minutes" value="60">
                                         <button type="submit">Закрыть на час</button>
                                     </form>
+                                    <?php } ?>
                                 </td>
                             </tr>
                         <?php } ?>
@@ -104,7 +111,7 @@ use Rsgrinko\Proton\View\View;
                     <th>Адрес</th>
                     <th>Причина</th>
                     <th>До</th>
-                    <th></th>
+                    <?php if ($canManage) { ?><th></th><?php } ?>
                 </tr>
 
                 <?php foreach ($blocks as $block) { ?>
@@ -118,6 +125,7 @@ use Rsgrinko\Proton\View\View;
                                 <?= View::e(View::date($block->until())) ?>
                             <?php } ?>
                         </td>
+                        <?php if ($canManage) { ?>
                         <td class="right">
                             <form method="post" action="<?= View::e(View::route('admin.security.unblock')) ?>">
                                 <?= View::csrf() ?>
@@ -125,6 +133,7 @@ use Rsgrinko\Proton\View\View;
                                 <button type="submit">Открыть</button>
                             </form>
                         </td>
+                        <?php } ?>
                     </tr>
                 <?php } ?>
             </table>
@@ -153,7 +162,7 @@ use Rsgrinko\Proton\View\View;
                     <th>Адрес</th>
                     <th>Логин</th>
                     <th class="hide-sm">Страница</th>
-                    <th></th>
+                    <?php if ($canManage) { ?><th></th><?php } ?>
                 </tr>
 
                 <?php foreach ($page['items'] as $event) { ?>
@@ -163,6 +172,7 @@ use Rsgrinko\Proton\View\View;
                         <td class="mono small"><?= View::e((string) $event->raw('ip')) ?></td>
                         <td class="small"><?= View::e((string) $event->raw('login') ?: '—') ?></td>
                         <td class="hide-sm muted small"><?= View::e((string) $event->raw('path') ?: '—') ?></td>
+                        <?php if ($canManage) { ?>
                         <td class="right">
                             <?php if ((string) $event->raw('ip') !== '') { ?>
                                 <form method="post" action="<?= View::e(View::route('admin.security.block')) ?>">
@@ -174,6 +184,7 @@ use Rsgrinko\Proton\View\View;
                                 </form>
                             <?php } ?>
                         </td>
+                        <?php } ?>
                     </tr>
                 <?php } ?>
             </table>

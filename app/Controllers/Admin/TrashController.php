@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Controllers\Admin;
 
 use Rsgrinko\Proton\Access\AccessDenied;
+use Rsgrinko\Proton\Access\Permission;
 use Rsgrinko\Proton\Access\Viewer;
 use Rsgrinko\Proton\Database\Model\Model;
 use Rsgrinko\Proton\Events\Events;
@@ -25,7 +26,7 @@ final class TrashController extends Controller
 {
     public function index(Request $request, Viewer $viewer): Response
     {
-        $kinds = $this->allowed($viewer);
+        $kinds = $this->visible($viewer);
 
         if ($kinds === []) {
             throw new AccessDenied('Корзина пуста для вашей роли');
@@ -40,13 +41,16 @@ final class TrashController extends Controller
             ->paginate($this->page($request), $this->perPage());
 
         return $this->view('admin/trash', [
-            'active'  => 'trash',
-            'kinds'   => $kinds,
-            'counts'  => $this->counts($kinds),
-            'kind'    => $key,
-            'label'   => $kind['label'],
-            'title'   => $kind['title'],
-            'page'    => $page ?? ['items' => [], 'total' => 0, 'page' => 1, 'pages' => 1, 'per_page' => 0],
+            'active'    => 'trash',
+            'kinds'     => $kinds,
+            'counts'    => $this->counts($kinds),
+            'kind'      => $key,
+            'label'     => $kind['label'],
+            'title'     => $kind['title'],
+            // Смотреть раздел корзины и возвращать/добивать из него — разные права:
+            // trash.view даёт только первое
+            'canAct'    => $this->canAct($viewer, $kind),
+            'page'      => $page ?? ['items' => [], 'total' => 0, 'page' => 1, 'pages' => 1, 'per_page' => 0],
         ], 'Корзина');
     }
 
@@ -103,7 +107,7 @@ final class TrashController extends Controller
         ], ['action' => 'Действие']);
 
         $key   = (string) $request->input('kind', '');
-        $kinds = $this->allowed($viewer);
+        $kinds = $this->actionable($viewer);
 
         if (!isset($kinds[$key])) {
             throw new AccessDenied('Этот раздел корзины вам не доступен');
@@ -153,7 +157,7 @@ final class TrashController extends Controller
     public function clear(Request $request, Viewer $viewer): Response
     {
         $key   = (string) $request->input('kind', '');
-        $kinds = $this->allowed($viewer);
+        $kinds = $this->actionable($viewer);
 
         if (!isset($kinds[$key])) {
             throw new AccessDenied('Этот раздел корзины вам не доступен');
@@ -181,7 +185,7 @@ final class TrashController extends Controller
     private function find(Request $request, Viewer $viewer): array
     {
         $key    = (string) $request->input('kind', '');
-        $kinds  = $this->allowed($viewer);
+        $kinds  = $this->actionable($viewer);
 
         if (!isset($kinds[$key])) {
             throw new AccessDenied('Этот раздел корзины вам не доступен');
@@ -200,21 +204,50 @@ final class TrashController extends Controller
     }
 
     /**
-     * Разделы, доступные этому человеку.
+     * Разделы, которые этому человеку видно, — своё право раздела, а если
+     * его нет, хватает и общего trash.view (или trash.manage — кто может
+     * действовать, тот и видит).
      *
      * @return array<string, array{model: class-string<Model>, label: string, title: callable, permission: string}>
      */
-    private function allowed(Viewer $viewer): array
+    private function visible(Viewer $viewer): array
     {
-        $allowed = [];
+        $visible = [];
 
         foreach (Trash::kinds() as $key => $kind) {
-            if ($kind['permission'] === '' || $viewer->can($kind['permission'])) {
-                $allowed[$key] = $kind;
+            if ($kind['permission'] === '' || $viewer->can($kind['permission']) || $viewer->canAny([Permission::TRASH_VIEW, Permission::TRASH_MANAGE])) {
+                $visible[$key] = $kind;
             }
         }
 
-        return $allowed;
+        return $visible;
+    }
+
+    /**
+     * Разделы, в которых этому человеку можно возвращать и добивать записи —
+     * trash.view сюда не пускает, только своё право раздела или trash.manage.
+     *
+     * @return array<string, array{model: class-string<Model>, label: string, title: callable, permission: string}>
+     */
+    private function actionable(Viewer $viewer): array
+    {
+        $actionable = [];
+
+        foreach (Trash::kinds() as $key => $kind) {
+            if ($kind['permission'] === '' || $viewer->can($kind['permission']) || $viewer->can(Permission::TRASH_MANAGE)) {
+                $actionable[$key] = $kind;
+            }
+        }
+
+        return $actionable;
+    }
+
+    /**
+     * @param array{model: class-string<Model>, label: string, title: callable, permission: string} $kind
+     */
+    private function canAct(Viewer $viewer, array $kind): bool
+    {
+        return $kind['permission'] === '' || $viewer->can($kind['permission']) || $viewer->can(Permission::TRASH_MANAGE);
     }
 
     /**

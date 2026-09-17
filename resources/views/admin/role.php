@@ -9,11 +9,16 @@ declare(strict_types=1);
  * @var array<string, array<string, string>> $groups права по разделам
  */
 
+use Rsgrinko\Proton\Access\Permission;
 use Rsgrinko\Proton\View\View;
 
-$isNew   = !$role->existsInDatabase();
-$action  = $isNew ? View::route('admin.roles.create') : View::route('admin.roles.show', ['id' => $role->id()]);
-$granted = $role->permissions();
+$isNew     = !$role->existsInDatabase();
+$action    = $isNew ? View::route('admin.roles.create') : View::route('admin.roles.show', ['id' => $role->id()]);
+$granted   = $role->permissions();
+// Новая роль — только у тех, кто прошёл can:roles.manage в маршруте; карточку
+// существующей открывает и roles.view — тогда поля и галочки не трогать
+$canManage = View::can(Permission::ROLES_MANAGE);
+$readOnly  = !$isNew && !$canManage;
 ?>
 <h1><?= $isNew ? 'Новая роль' : View::e((string) $role->name) ?></h1>
 
@@ -23,12 +28,12 @@ $granted = $role->permissions();
 
         <label>
             <span>Название</span>
-            <input type="text" name="name" value="<?= View::e((string) $role->name) ?>" <?= $isNew ? 'autofocus' : '' ?> required>
+            <input type="text" name="name" value="<?= View::e((string) $role->name) ?>" <?= $isNew ? 'autofocus' : '' ?> <?= $readOnly ? 'disabled' : '' ?> required>
         </label>
 
         <label>
             <span>Описание</span>
-            <input type="text" name="description" value="<?= View::e((string) $role->description) ?>">
+            <input type="text" name="description" value="<?= View::e((string) $role->description) ?>" <?= $readOnly ? 'disabled' : '' ?>>
         </label>
 
         <?php if ($role->isSystem()) { ?>
@@ -46,7 +51,7 @@ $granted = $role->permissions();
                     <?php foreach ($permissions as $code => $label) { ?>
                         <label class="inline" style="margin-bottom: 6px;">
                             <input type="checkbox" name="permissions[]" value="<?= View::e($code) ?>"
-                                <?= in_array($code, $granted, true) ? 'checked' : '' ?>>
+                                <?= in_array($code, $granted, true) ? 'checked' : '' ?> <?= $readOnly ? 'disabled' : '' ?>>
                             <span><?= View::e($label) ?> <span class="muted mono"><?= View::e($code) ?></span></span>
                         </label>
                     <?php } ?>
@@ -55,13 +60,13 @@ $granted = $role->permissions();
         <?php } ?>
 
         <div class="row">
-            <button type="submit" class="primary">Сохранить</button>
+            <?php if (!$readOnly) { ?><button type="submit" class="primary">Сохранить</button><?php } ?>
             <a class="btn" href="<?= View::e(View::route('admin.roles')) ?>">К списку</a>
         </div>
     </form>
 </div>
 
-<?php if (!$isNew && !$role->isSystem()) { ?>
+<?php if (!$isNew && !$role->isSystem() && $canManage) { ?>
     <div class="card">
         <h2>Удаление</h2>
         <p class="muted small">Роль удаляется, только если она никому не выдана.</p>

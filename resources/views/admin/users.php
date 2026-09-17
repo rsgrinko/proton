@@ -10,12 +10,19 @@ declare(strict_types=1);
  * @var \Rsgrinko\Proton\Support\Filters $filters
  */
 
+use Rsgrinko\Proton\Access\Permission;
 use Rsgrinko\Proton\View\View;
+
+// Список открыт и по users.view — правки и массовые действия показываем
+// только тому, у кого есть users.manage
+$canManage = View::can(Permission::USERS_MANAGE);
 ?>
 <div class="row">
     <h1 style="margin: 0;">Пользователи</h1>
     <span class="spacer"></span>
-    <a class="btn primary" href="<?= View::e(View::route('admin.users.create')) ?>">Новый пользователь</a>
+    <?php if ($canManage) { ?>
+        <a class="btn primary" href="<?= View::e(View::route('admin.users.create')) ?>">Новый пользователь</a>
+    <?php } ?>
 </div>
 
 <div style="margin-top: 16px;">
@@ -26,6 +33,7 @@ use Rsgrinko\Proton\View\View;
     <?php if ($page['items'] === []) { ?>
         <p class="muted">Ничего не нашлось.</p>
     <?php } else { ?>
+        <?php if ($canManage) { ?>
         <form method="post" action="<?= View::e(View::route('admin.users.bulk')) ?>">
             <?= View::csrf() ?>
 
@@ -37,11 +45,12 @@ use Rsgrinko\Proton\View\View;
                 ],
                 'confirm' => 'Выполнить действие над отмеченными пользователями?',
             ]) ?>
+        <?php } ?>
 
         <div class="table-wrap">
             <table class="list">
                 <tr class="head">
-                    <th></th>
+                    <?php if ($canManage) { ?><th></th><?php } ?>
                     <th></th>
                     <th><?= View::partial('sort', ['filters' => $filters, 'route' => 'admin.users', 'column' => 'login', 'label' => 'Логин']) ?></th>
                     <th class="hide-sm">Имя</th>
@@ -53,7 +62,7 @@ use Rsgrinko\Proton\View\View;
 
                 <?php foreach ($page['items'] as $user) { ?>
                     <tr>
-                        <td><input type="checkbox" name="ids[]" value="<?= $user->id() ?>" data-check-item></td>
+                        <?php if ($canManage) { ?><td><input type="checkbox" name="ids[]" value="<?= $user->id() ?>" data-check-item></td><?php } ?>
                         <td><?= View::avatar($user) ?></td>
                         <td><a href="<?= View::e(View::route('admin.users.show', ['id' => $user->id()])) ?>"><?= View::e((string) $user->login) ?></a></td>
                         <td class="hide-sm"><?= View::e((string) $user->name) ?></td>
@@ -72,7 +81,7 @@ use Rsgrinko\Proton\View\View;
             </table>
         </div>
 
-        </form>
+        <?php if ($canManage) { ?></form><?php } ?>
 
         <?= View::partial('pagination', [
             'route'  => 'admin.users',

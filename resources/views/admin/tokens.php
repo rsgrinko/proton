@@ -12,7 +12,10 @@ declare(strict_types=1);
  * @var string $issued только что выпущенный ключ — показывается один раз
  */
 
+use Rsgrinko\Proton\Access\Permission;
 use Rsgrinko\Proton\View\View;
+
+$canManage = View::can(Permission::TOKENS_MANAGE);
 ?>
 <h1>Ключи API</h1>
 
@@ -25,6 +28,7 @@ use Rsgrinko\Proton\View\View;
     </div>
 <?php } ?>
 
+<?php if ($canManage) { ?>
 <div class="card">
     <h2>Выпустить ключ</h2>
 
@@ -67,6 +71,7 @@ use Rsgrinko\Proton\View\View;
         </div>
     </form>
 </div>
+<?php } ?>
 
 <?= View::partial('filters', ['filters' => $filters, 'route' => 'admin.tokens', 'total' => $page['total']]) ?>
 
@@ -87,7 +92,7 @@ use Rsgrinko\Proton\View\View;
                     <th>Состояние</th>
                     <th class="hide-sm">Срок</th>
                     <th class="hide-sm">Использован</th>
-                    <th></th>
+                    <?php if ($canManage) { ?><th></th><?php } ?>
                 </tr>
 
                 <?php foreach ($page['items'] as $token) { ?>
@@ -117,6 +122,7 @@ use Rsgrinko\Proton\View\View;
                             <?php } ?>
                         </td>
                         <td class="hide-sm muted small"><?= View::e(View::ago((string) $token->raw('last_used_at'))) ?></td>
+                        <?php if ($canManage) { ?>
                         <td class="right">
                             <div class="row end">
                                 <?php if ((int) $token->raw('active') === 1) { ?>
@@ -132,6 +138,7 @@ use Rsgrinko\Proton\View\View;
                                 </form>
                             </div>
                         </td>
+                        <?php } ?>
                     </tr>
                 <?php } ?>
             </table>

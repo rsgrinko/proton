@@ -8,12 +8,15 @@ declare(strict_types=1);
  * @var array<int, \Rsgrinko\Proton\Models\Role> $roles
  */
 
+use Rsgrinko\Proton\Access\Permission;
 use Rsgrinko\Proton\View\View;
 ?>
 <div class="row">
     <h1 style="margin: 0;">Роли</h1>
     <span class="spacer"></span>
-    <a class="btn primary" href="<?= View::e(View::route('admin.roles.create')) ?>">Новая роль</a>
+    <?php if (View::can(Permission::ROLES_MANAGE)) { ?>
+        <a class="btn primary" href="<?= View::e(View::route('admin.roles.create')) ?>">Новая роль</a>
+    <?php } ?>
 </div>
 
 <div class="card" style="margin-top: 16px;">

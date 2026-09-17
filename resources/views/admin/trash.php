@@ -11,6 +11,7 @@ declare(strict_types=1);
  * @var string $label его подпись
  * @var callable $title как назвать запись
  * @var array{items: array<int, \Rsgrinko\Proton\Database\Model\Model>, total: int, page: int, pages: int, per_page: int} $page
+ * @var bool $canAct смотреть раздел и возвращать/добивать из него — разные права
  */
 
 use Rsgrinko\Proton\Database\Model\Model;
@@ -22,7 +23,7 @@ use Rsgrinko\Proton\View\View;
     <div class="row">
         <?php foreach ($kinds as $key => $item) { ?>
             <?php if ($key === $kind) { ?>
-                <span class="badge info"><?= View::e($item['label']) ?>: <?= (int) ($counts[$key] ?? 0) ?></span>
+                <span class="btn small primary"><?= View::e($item['label']) ?> (<?= (int) ($counts[$key] ?? 0) ?>)</span>
             <?php } else { ?>
                 <a class="btn small" href="<?= View::e(View::route('admin.trash', ['kind' => $key])) ?>">
                     <?= View::e($item['label']) ?> (<?= (int) ($counts[$key] ?? 0) ?>)
@@ -40,7 +41,7 @@ use Rsgrinko\Proton\View\View;
         <h2 style="margin: 0;"><?= View::e($label) ?></h2>
         <span class="spacer"></span>
 
-        <?php if (($counts[$kind] ?? 0) > 0) { ?>
+        <?php if ($canAct && ($counts[$kind] ?? 0) > 0) { ?>
             <form method="post" action="<?= View::e(View::route('admin.trash.clear')) ?>">
                 <?= View::csrf() ?>
                 <input type="hidden" name="kind" value="<?= View::e($kind) ?>">
@@ -55,6 +56,7 @@ use Rsgrinko\Proton\View\View;
     <?php if ($page['items'] === []) { ?>
         <p class="muted">Здесь пусто — ничего не удаляли или всё уже вернули.</p>
     <?php } else { ?>
+        <?php if ($canAct) { ?>
         <form method="post" action="<?= View::e(View::route('admin.trash.bulk')) ?>">
             <?= View::csrf() ?>
             <input type="hidden" name="kind" value="<?= View::e($kind) ?>">
@@ -66,21 +68,23 @@ use Rsgrinko\Proton\View\View;
                 ],
                 'confirm' => 'Выполнить действие над отмеченными записями? Удаление совсем — без возврата.',
             ]) ?>
+        <?php } ?>
 
         <div class="table-wrap">
             <table class="list">
                 <tr class="head">
-                    <th></th>
+                    <?php if ($canAct) { ?><th></th><?php } ?>
                     <th>Запись</th>
                     <th>Удалена</th>
-                    <th></th>
+                    <?php if ($canAct) { ?><th></th><?php } ?>
                 </tr>
 
                 <?php foreach ($page['items'] as $record) { ?>
                     <tr>
-                        <td><input type="checkbox" name="ids[]" value="<?= $record->id() ?>" data-check-item></td>
+                        <?php if ($canAct) { ?><td><input type="checkbox" name="ids[]" value="<?= $record->id() ?>" data-check-item></td><?php } ?>
                         <td><?= View::e(($title)($record)) ?></td>
                         <td class="muted small nowrap"><?= View::e(View::ago((string) $record->raw(Model::DELETED_AT))) ?></td>
+                        <?php if ($canAct) { ?>
                         <td class="right">
                             <div class="row end">
                                 <form method="post" action="<?= View::e(View::route('admin.trash.restore')) ?>">
@@ -98,11 +102,12 @@ use Rsgrinko\Proton\View\View;
                                 </form>
                             </div>
                         </td>
+                        <?php } ?>
                     </tr>
                 <?php } ?>
             </table>
         </div>
-        </form>
+        <?php if ($canAct) { ?></form><?php } ?>
 
         <?= View::partial('pagination', [
             'route'  => 'admin.trash',
