@@ -536,7 +536,7 @@ HTML;
         $this->line('');
         $this->line('3. Пункт меню — config/menu.php:');
         $this->line('');
-        $this->line('    [\'title\' => \'' . $title . '\', \'route\' => \'' . $route . '.index\', \'permission\' => \'' . $route . '.view\'],');
+        $this->line('    [\'key\' => \'' . $route . '\', \'label\' => \'' . $title . '\', \'route\' => \'' . $route . '.index\', \'permission\' => \'' . $route . '.view\', \'group\' => 3],');
 
         if ($this->hasOption('api')) {
             $this->line('');

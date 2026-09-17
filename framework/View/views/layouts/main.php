@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 /**
- * Каркас всех страниц: шапка, меню, сообщения и стили.
+ * Каркас всех страниц: боковое меню, шапка страницы, сообщения и стили.
  *
  * Лежит в ядре, но перекрывается приложением: положите свой файл в
  * resources/views/layouts/main.php — View возьмёт его.
@@ -27,9 +27,13 @@ $name = (string) Config::get('app.name', 'Proton');
 
 // Число у ссылки «Уведомления»: один COUNT на страницу, и только вошедшему
 $unread = $viewer->isGuest() ? 0 : UserNotification::unreadFor($viewer->id());
+
+// Тема — своя у пользователя, у гостя всегда светлая: переключатель живёт
+// в профиле, спросить там больше некого
+$theme = (!$viewer->isGuest() && $viewer->user() !== null) ? $viewer->user()->theme() : 'light';
 ?>
 <!doctype html>
-<html lang="ru">
+<html lang="ru"<?= $theme === 'dark' ? ' data-theme="dark"' : '' ?>>
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -39,38 +43,39 @@ $unread = $viewer->isGuest() ? 0 : UserNotification::unreadFor($viewer->id());
             /* Свои части полей и скроллбары браузер рисует по этой подсказке;
                без неё в тёмной теме они остаются светлыми */
             color-scheme: light;
-            --bg: #f5f6f8;
+            --bg: #f2f3f5;
             --panel: #ffffff;
-            --border: #e2e5ea;
-            --text: #1d2129;
-            --muted: #6b7280;
-            --accent: #2563eb;
-            --ok: #15803d;
-            --ok-bg: #dcfce7;
+            --border: #e3e5ea;
+            --text: #23262d;
+            --muted: #767b87;
+            --accent: #3350b3;
+            --ok: #157347;
+            --ok-bg: #dcf3e8;
             --warn: #b45309;
             --warn-bg: #fef3c7;
-            --err: #b91c1c;
-            --err-bg: #fee2e2;
-            --info-bg: #dbeafe;
+            --err: #b42318;
+            --err-bg: #fbe2df;
+            --info-bg: #e7eaf8;
         }
 
-        @media (prefers-color-scheme: dark) {
-            :root {
-                color-scheme: dark;
-                --bg: #14161a;
-                --panel: #1c1f25;
-                --border: #2c313a;
-                --text: #e5e7eb;
-                --muted: #9ca3af;
-                --accent: #60a5fa;
-                --ok: #4ade80;
-                --ok-bg: #14321f;
-                --warn: #fbbf24;
-                --warn-bg: #3a2d0c;
-                --err: #f87171;
-                --err-bg: #3b1717;
-                --info-bg: #17293f;
-            }
+        /* Тёмная тема — по выбору в профиле (атрибут на <html>), не по
+           настройке ОС: иначе вид панели расходится с тем, что согласовали,
+           у любого, чей браузер сам стоит в тёмном режиме */
+        :root[data-theme="dark"] {
+            color-scheme: dark;
+            --bg: #14161a;
+            --panel: #1c1f25;
+            --border: #2c313a;
+            --text: #e5e7eb;
+            --muted: #9ca3af;
+            --accent: #8b93e8;
+            --ok: #4ade80;
+            --ok-bg: #14321f;
+            --warn: #fbbf24;
+            --warn-bg: #3a2d0c;
+            --err: #f87171;
+            --err-bg: #3b1717;
+            --info-bg: #232a4a;
         }
 
         * { box-sizing: border-box; }
@@ -79,77 +84,123 @@ $unread = $viewer->isGuest() ? 0 : UserNotification::unreadFor($viewer->id());
             margin: 0;
             background: var(--bg);
             color: var(--text);
-            font: 14px/1.5 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            font: 12.5px/1.45 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
         }
 
         a { color: var(--accent); text-decoration: none; }
         a:hover { text-decoration: underline; }
 
-        header {
+        /* Каркас: узкая колонка разделов слева, шапка страницы и контент
+           справа. Пунктов в админке больше десятка — в один ряд наверху они
+           не помещались и переносились на вторую строку; список сбоку
+           тянется вниз, а не вширь */
+        .shell { display: flex; align-items: stretch; }
+
+        /* На больших экранах список разделов не уезжает вместе с контентом:
+           повисает под шапкой и сам не выше окна, а прокручивается своей
+           полосой, если пунктов вдруг станет больше, чем влезает по высоте */
+        .side { width: 196px; flex: none; background: var(--panel); border-right: 1px solid var(--border); padding: 14px 8px; box-sizing: border-box; position: sticky; top: 0; align-self: flex-start; height: 100vh; overflow-y: auto; }
+
+        .side .brand { display: flex; align-items: center; gap: 8px; padding: 2px 8px 14px; }
+        .side .logo { width: 22px; height: 22px; border-radius: 6px; background: var(--accent); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 11px; flex: none; }
+        .side .brand b { font-size: 13px; font-weight: 650; }
+
+        .side nav { display: flex; flex-direction: column; gap: 1px; }
+        .side nav a { display: block; padding: 5px 9px; border-radius: 5px; color: var(--text); font-weight: 500; font-size: 12.5px; }
+        .side nav a:hover { background: var(--bg); text-decoration: none; }
+        .side nav a.active { background: var(--accent); color: #fff; font-weight: 600; }
+
+        /* Разделитель между группами меню ставится по числу group у
+           соседних пунктов конфига, а не жёстко по разделам — новых
+           пунктов станет больше, а разметка не изменится */
+        .side .nav-sep { height: 1px; background: var(--border); margin: 8px 4px; }
+
+        .content-col { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+
+        .topbar {
+            height: 40px;
+            flex: none;
             background: var(--panel);
             border-bottom: 1px solid var(--border);
-            padding: 0 20px;
+            display: flex;
+            align-items: center;
+            padding: 0 16px;
+            gap: 12px;
+            font-size: 12px;
             position: sticky;
             top: 0;
             z-index: 10;
         }
 
-        .brand { display: flex; align-items: baseline; gap: 12px; padding: 14px 0 10px; }
-        .brand b { font-size: 17px; }
-        .brand span { color: var(--muted); font-size: 12px; }
-        .brand .who { margin-left: auto; display: flex; align-items: center; gap: 10px; }
-        .brand .who form { display: inline; }
+        .crumb { color: var(--muted); font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .crumb a { color: var(--muted); }
+        .crumb a:hover { color: var(--accent); }
+        .crumb b { color: var(--text); font-weight: 600; }
 
-        /* Кнопка меню нужна только на узких экранах, разворачивает её чекбокс без единой строки JS */
+        .topbar .who { margin-left: auto; display: flex; align-items: center; gap: 10px; color: var(--muted); }
+        .topbar .who form { display: inline; }
+
+        /* Кнопка меню нужна только на узких экранах, разворачивает боковой
+           список через чекбокс без единой строки JS */
         .burger { display: none; }
 
         .auth { max-width: 400px; margin: 8vh auto 0; }
         .auth h1 { text-align: center; }
 
-        nav { display: flex; gap: 4px; flex-wrap: wrap; }
-        nav a { padding: 8px 12px; border-radius: 6px 6px 0 0; color: var(--text); font-weight: 500; }
-        nav a:hover { background: var(--bg); text-decoration: none; }
-        nav a.active { background: var(--accent); color: #fff; }
+        /* Без потолка ширины: сайдбар и так задаёт свою колонку, а от
+           центрированного блока с полями по бокам на широком мониторе
+           контент выглядел зажатым в узкую полоску посередине */
+        main { padding: 14px 20px; width: 100%; box-sizing: border-box; }
 
-        main { padding: 20px; max-width: 1400px; margin: 0 auto; }
-
-        h1 { font-size: 20px; margin: 0 0 16px; }
-        h2 { font-size: 16px; margin: 0 0 12px; }
+        h1 { font-size: 16px; margin: 0 0 10px; }
+        h2 { font-size: 14px; margin: 0 0 10px; }
 
         .card {
             background: var(--panel);
             border: 1px solid var(--border);
-            border-radius: 10px;
-            padding: 16px;
-            margin-bottom: 16px;
+            border-radius: 6px;
+            padding: 10px 12px;
+            margin-bottom: 12px;
         }
 
         .card > h2:first-child { margin-top: 0; }
 
-        .grid { display: grid; gap: 16px; }
+        /* Карточка показателя на обзоре — тоньше обычной и с цветной
+           полосой слева; свой цвет карточка задаёт переменной --c инлайн,
+           без неё полоса берёт цвет акцента */
+        .card.stat { border-left: 3px solid var(--c, var(--accent)); padding: 8px 10px; }
+
+        .grid { display: grid; gap: 8px; }
         /* Без этого широкая таблица распирает колонку вместо того, чтобы прокручиваться */
         .grid > * { min-width: 0; }
         .grid.cols-2 { grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
         .grid.cols-4 { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
 
-        .stat .value { font-size: 26px; font-weight: 600; }
-        .stat .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+        .stat .value { font-size: 19px; font-weight: 650; line-height: 1.1; }
+        .stat .label { color: var(--muted); font-size: 10.5px; text-transform: uppercase; letter-spacing: .03em; margin-bottom: 4px; }
 
         a.card { color: inherit; }
         a.card:hover { text-decoration: none; border-color: var(--accent); }
         a.card:hover .value { color: var(--accent); }
 
         table { width: 100%; border-collapse: collapse; }
-        th, td { padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--border); vertical-align: top; }
-        th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .03em; }
+        th, td { padding: 5px 8px; text-align: left; border-bottom: 1px solid var(--border); vertical-align: top; }
+        th { color: var(--muted); font-weight: 650; font-size: 10.5px; text-transform: uppercase; letter-spacing: .03em; }
         tr:last-child td { border-bottom: none; }
+        /* Список построчно — почти любая таблица в панели: полоса через
+           строку держит взгляд на нужной ячейке в плотной сетке */
+        table.list tr:nth-child(even) { background: var(--bg); }
+        /* Аватар (36px) выше строки текста рядом с ним — по верхнему краю
+           это смотрится обрезанным, по центру строки — как обычная строка
+           списка */
+        table.list td { vertical-align: middle; }
         .table-wrap { overflow-x: auto; }
 
         .badge {
             display: inline-block;
-            padding: 2px 8px;
+            padding: 1px 7px;
             border-radius: 20px;
-            font-size: 12px;
+            font-size: 11px;
             font-weight: 600;
             white-space: nowrap;
         }
@@ -190,7 +241,7 @@ $unread = $viewer->isGuest() ? 0 : UserNotification::unreadFor($viewer->id());
 
         /* В шапке аватар — только опознавательный знак рядом с именем, не
            витрина: своя, меньшая величина того же кружка */
-        .who-name { display: inline-flex; align-items: center; gap: 6px; }
+        .who-name { display: inline-flex; align-items: center; gap: 6px; color: var(--text); font-weight: 600; }
         .who-name .avatar, .who-name .avatar-placeholder { width: 22px; height: 22px; font-size: 10px; }
 
         /* Перечислять типы полей по одному — значит рано или поздно забыть
@@ -208,6 +259,35 @@ $unread = $viewer->isGuest() ? 0 : UserNotification::unreadFor($viewer->id());
         }
 
         textarea { min-height: 140px; font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
+
+        /* Обычному полю ширина 100% идёт, а полю выбора файла — нет: рядом с
+           короткой кнопкой и текстом «файл не выбран» пустая рамка на всю
+           строку смотрится дыркой. Врастяжку — только кнопка внутри инпута,
+           сам контрол — по содержимому */
+        input[type=file] {
+            display: inline-flex;
+            align-items: center;
+            width: auto;
+            max-width: 100%;
+            padding: 4px;
+            border: 1px solid var(--border);
+            border-radius: 7px;
+            background: var(--bg);
+            color: var(--muted);
+            font: inherit;
+        }
+        input[type=file]::file-selector-button {
+            padding: 6px 12px;
+            margin-right: 8px;
+            border: none;
+            border-radius: 4px;
+            background: var(--panel);
+            color: var(--text);
+            font: inherit;
+            cursor: pointer;
+            box-shadow: 0 0 0 1px var(--border);
+        }
+        input[type=file]::file-selector-button:hover { background: var(--accent); color: #fff; box-shadow: 0 0 0 1px var(--accent); }
 
         label { display: block; margin-bottom: 12px; }
         label > span { display: block; margin-bottom: 4px; color: var(--muted); font-size: 12px; }
@@ -229,9 +309,11 @@ $unread = $viewer->isGuest() ? 0 : UserNotification::unreadFor($viewer->id());
         button.copy { padding: 2px 8px; font-size: 12px; color: var(--muted); vertical-align: middle; }
         button.copy:hover { color: var(--text); }
 
-        button:hover, .btn:hover { border-color: var(--accent); text-decoration: none; }
+        button:hover, .btn:hover { background: var(--bg); border-color: var(--accent); text-decoration: none; }
         button.primary, .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+        button.primary:hover, .btn.primary:hover { filter: brightness(.92); }
         button.danger, .btn.danger { color: var(--err); }
+        button.danger:hover, .btn.danger:hover { background: var(--err-bg); border-color: var(--err); }
         button:disabled, .btn:disabled { cursor: not-allowed; opacity: .6; }
 
         /* Всё, по чему можно щёлкнуть, должно говорить об этом курсором */
@@ -268,6 +350,12 @@ $unread = $viewer->isGuest() ? 0 : UserNotification::unreadFor($viewer->id());
 
         .log-context { display: block; max-width: min(100%, 900px); }
         .log-context pre { max-width: 100%; margin: 6px 0 0; overflow-x: auto; word-break: break-all; }
+
+        /* Развёрнутый список изменений в строке журнала — без своего фона и
+           рамки он сливался с полосой чётной строки списка */
+        .diff { margin-top: 6px; background: var(--info-bg); border-radius: 6px; overflow: hidden; }
+        .diff td { border-bottom: 1px solid var(--border); }
+        .diff tr:last-child td { border-bottom: none; }
 
         .attachments { display: flex; flex-wrap: wrap; gap: 12px; }
         .attachments .attachment { width: 140px; }
@@ -356,40 +444,61 @@ $unread = $viewer->isGuest() ? 0 : UserNotification::unreadFor($viewer->id());
 
         /* Телефоны и узкие окна */
         @media (max-width: 760px) {
-            header { padding: 0 12px; }
-            .brand { padding: 10px 0; gap: 8px; }
-            .brand .tagline { display: none; }
-            .brand .who { margin-left: 0; gap: 8px; }
+            .shell { flex-direction: column; }
 
-            /* Меню прячем под кнопку: десяток пунктов в строку не помещается */
+            /* Список разделов на телефоне не полоса слева, а выпадающая
+               панель поверх контента: висит под шапкой независимо от того,
+               насколько длинная страница внизу, и не заставляет сначала
+               пролистать её до конца, чтобы увидеть меню */
+            .side {
+                display: none;
+                position: fixed;
+                top: 40px;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                height: auto;
+                z-index: 15;
+                width: auto;
+                border-right: none;
+                border-top: 1px solid var(--border);
+                box-shadow: 0 8px 24px rgba(0, 0, 0, .15);
+                overflow-y: auto;
+            }
+            .menu-toggle:checked ~ .shell .side { display: block; }
+
+            .topbar { padding: 0 12px; gap: 8px; }
+            /* «Proton /» перед названием страницы съедает и так тесную
+               строку — оставляем только само название */
+            .crumb .crumb-root { display: none; }
+            /* Длинное имя иначе переносится на вторую строку и ломает
+               высоту шапки */
+            .who-name-text { display: inline-block; max-width: 70px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle; }
+
             .burger {
                 display: inline-flex;
-                margin-left: auto;
+                flex: none;
                 align-items: center;
                 justify-content: center;
-                width: 40px;
-                height: 34px;
+                width: 34px;
+                height: 28px;
                 border: 1px solid var(--border);
                 border-radius: 6px;
-                font-size: 18px;
+                font-size: 16px;
                 line-height: 1;
                 user-select: none;
             }
 
-            .menu-toggle:checked ~ .brand .burger { background: var(--accent); border-color: var(--accent); color: #fff; }
+            .menu-toggle:checked ~ .shell .burger { background: var(--accent); border-color: var(--accent); color: #fff; }
 
-            nav { display: none; }
-            .menu-toggle:checked ~ nav { display: flex; flex-direction: column; gap: 2px; padding-bottom: 10px; }
-            nav a { border-radius: 6px; padding: 10px 12px; }
+            main { padding: 10px; }
+            h1 { font-size: 15px; }
 
-            main { padding: 12px; }
-            h1 { font-size: 18px; }
-
-            .card { padding: 12px; }
-            .grid { gap: 12px; }
+            .card { padding: 8px 10px; }
+            .grid { gap: 8px; }
             .grid.cols-2 { grid-template-columns: 1fr; }
             .grid.cols-4 { grid-template-columns: 1fr 1fr; }
-            .stat .value { font-size: 22px; }
+            .stat .value { font-size: 17px; }
 
             .filters { grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; }
             .row > label { min-width: 100%; }
@@ -398,7 +507,7 @@ $unread = $viewer->isGuest() ? 0 : UserNotification::unreadFor($viewer->id());
             .filters label.dates { grid-column: 1 / -1; }
             .filters .range input { min-width: 0; }
 
-            th, td { padding: 6px 8px; }
+            th, td { padding: 4px 6px; }
 
             /* Скрытые колонки не должны всплыть из-за display:block у ячеек */
             table.list td.hide-sm { display: none; }
@@ -439,47 +548,69 @@ $unread = $viewer->isGuest() ? 0 : UserNotification::unreadFor($viewer->id());
     </div>
 <?php } ?>
 
+<?php $mainClass = trim(($bare ? 'auth ' : '') . (Profiler::enabled() ? 'has-profiler' : '')); ?>
 <?php if (!$bare) { ?>
-<header>
-    <input type="checkbox" id="menu-toggle" class="menu-toggle" hidden>
-    <div class="brand">
-        <b><?= View::e($name) ?></b>
-        <span class="tagline">на Proton</span>
+<input type="checkbox" id="menu-toggle" class="menu-toggle" hidden>
+<div class="shell">
+    <aside class="side">
+        <div class="brand">
+            <div class="logo"><?= View::e(mb_strtoupper(mb_substr($name, 0, 1))) ?></div>
+            <b><?= View::e($name) ?></b>
+        </div>
 
-        <?php if (!$viewer->isGuest()) { ?>
-            <span class="who">
-                <a class="muted small" href="<?= View::e(View::route('notifications')) ?>" title="Уведомления">
-                    Уведомления<?= $unread > 0 ? ' <span class="badge warn">' . $unread . '</span>' : '' ?>
-                </a>
-                <a class="muted small who-name" href="<?= View::e(View::route('profile')) ?>">
-                    <?php if ($viewer->user() !== null) { ?><?= View::avatar($viewer->user()) ?><?php } ?>
-                    <?= View::e($viewer->name()) ?>
-                </a>
-                <form method="post" action="<?= View::e(View::route('logout')) ?>">
-                    <?= View::csrf() ?>
-                    <button type="submit">Выйти</button>
-                </form>
-            </span>
-        <?php } else { ?>
-            <span class="who">
-                <a href="<?= View::e(View::route('login')) ?>">Войти</a>
-            </span>
-        <?php } ?>
-
-        <label class="burger" for="menu-toggle" title="Меню" aria-label="Меню">☰</label>
-    </div>
-    <nav>
+        <?php $prevGroup = null; ?>
+        <nav>
         <?php foreach ($menu as $item) { ?>
             <?php if (($item['permission'] ?? '') === '' || View::can((string) $item['permission'])) { ?>
+                <?php $group = $item['group'] ?? null; ?>
+                <?php if ($prevGroup !== null && $group !== $prevGroup) { ?></nav><div class="nav-sep"></div><nav><?php } ?>
                 <a href="<?= View::e(View::route((string) $item['route'])) ?>"
                    class="<?= $active === (string) $item['key'] ? 'active' : '' ?>"><?= View::e((string) $item['label']) ?></a>
+                <?php $prevGroup = $group; ?>
             <?php } ?>
         <?php } ?>
-    </nav>
-</header>
-<?php } ?>
+        </nav>
+    </aside>
 
-<?php $mainClass = trim(($bare ? 'auth ' : '') . (Profiler::enabled() ? 'has-profiler' : '')); ?>
+    <div class="content-col">
+        <div class="topbar">
+            <label class="burger" for="menu-toggle" title="Меню" aria-label="Меню">☰</label>
+
+            <div class="crumb">
+                <a href="<?= View::e(View::route('home')) ?>" class="crumb-root"><?= View::e($name) ?></a><span class="crumb-root"> / </span><b><?= View::e($title) ?></b>
+            </div>
+
+            <?php if (!$viewer->isGuest()) { ?>
+                <div class="who">
+                    <a class="muted small" href="<?= View::e(View::route('notifications')) ?>" title="Уведомления">
+                        Уведомления<?= $unread > 0 ? ' <span class="badge warn">' . $unread . '</span>' : '' ?>
+                    </a>
+                    <a class="small who-name" href="<?= View::e(View::route('profile')) ?>">
+                        <?php if ($viewer->user() !== null) { ?><?= View::avatar($viewer->user()) ?><?php } ?>
+                        <span class="who-name-text"><?= View::e($viewer->name()) ?></span>
+                    </a>
+                    <form method="post" action="<?= View::e(View::route('logout')) ?>">
+                        <?= View::csrf() ?>
+                        <button type="submit">Выйти</button>
+                    </form>
+                </div>
+            <?php } else { ?>
+                <div class="who">
+                    <a href="<?= View::e(View::route('login')) ?>">Войти</a>
+                </div>
+            <?php } ?>
+        </div>
+
+        <main<?= $mainClass !== '' ? ' class="' . $mainClass . '"' : '' ?>>
+            <?php foreach ($flash as $item) { ?>
+                <div class="flash <?= View::e($item['type']) ?>"><?= View::e($item['message']) ?></div>
+            <?php } ?>
+
+            <?= $content ?>
+        </main>
+    </div>
+</div>
+<?php } else { ?>
 <main<?= $mainClass !== '' ? ' class="' . $mainClass . '"' : '' ?>>
     <?php foreach ($flash as $item) { ?>
         <div class="flash <?= View::e($item['type']) ?>"><?= View::e($item['message']) ?></div>
@@ -487,6 +618,7 @@ $unread = $viewer->isGuest() ? 0 : UserNotification::unreadFor($viewer->id());
 
     <?= $content ?>
 </main>
+<?php } ?>
 
 <?= View::partial('profiler') ?>
 
