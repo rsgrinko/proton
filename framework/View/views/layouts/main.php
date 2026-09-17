@@ -519,7 +519,10 @@ $theme = (!$viewer->isGuest() && $viewer->user() !== null) ? $viewer->user()->th
             /* Списки разворачиваем в карточки: иначе колонки сжимаются в столбик из букв */
             table.list, table.list tbody, table.list tr, table.list td { display: block; width: auto; }
             table.list tr.head { display: none; }
-            table.list tr { padding: 10px 0; border-bottom: 1px solid var(--border); }
+            /* Горизонтальный отступ — на строке: полоса чётной строки красится
+               во всю ширину карточки, а без отступа текст в ней упирался
+               прямо в край */
+            table.list tr { padding: 10px 12px; border-bottom: 1px solid var(--border); }
             table.list tr.head + tr { padding-top: 0; }
             table.list tr:last-child { border-bottom: none; padding-bottom: 0; }
             table.list td { border: none; padding: 2px 0; }
