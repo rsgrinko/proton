@@ -475,16 +475,20 @@ $theme = (!$viewer->isGuest() && $viewer->user() !== null) ? $viewer->user()->th
                высоту шапки */
             .who-name-text { display: inline-block; max-width: 70px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle; }
 
+            /* Высота — не своим числом, а тем же padding, что у соседней
+               кнопки «Выйти»: тогда обе всегда одного роста, даже если
+               шрифт шапки ещё поменяется */
             .burger {
                 display: inline-flex;
                 flex: none;
                 align-items: center;
                 justify-content: center;
-                width: 34px;
-                height: 28px;
+                width: 40px;
+                margin: 0;
+                padding: 8px 0;
                 border: 1px solid var(--border);
                 border-radius: 6px;
-                font-size: 16px;
+                font-size: 18px;
                 line-height: 1;
                 user-select: none;
             }
@@ -561,7 +565,9 @@ $theme = (!$viewer->isGuest() && $viewer->user() !== null) ? $viewer->user()->th
         <?php $prevGroup = null; ?>
         <nav>
         <?php foreach ($menu as $item) { ?>
-            <?php if (($item['permission'] ?? '') === '' || View::can((string) $item['permission'])) { ?>
+            <?php $itemPermission = (string) ($item['permission'] ?? ''); ?>
+            <?php /* «право1|право2» — тот же формат, что у can: в маршрутах: хватает любого */ ?>
+            <?php if ($itemPermission === '' || View::canAny(array_filter(explode('|', $itemPermission)))) { ?>
                 <?php $group = $item['group'] ?? null; ?>
                 <?php if ($prevGroup !== null && $group !== $prevGroup) { ?></nav><div class="nav-sep"></div><nav><?php } ?>
                 <a href="<?= View::e(View::route((string) $item['route'])) ?>"
