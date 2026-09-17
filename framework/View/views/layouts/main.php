@@ -254,6 +254,10 @@ $unread = $viewer->isGuest() ? 0 : UserNotification::unreadFor($viewer->id());
         .chart .col.empty { background: var(--border); }
         .chart-legend { display: flex; justify-content: space-between; }
 
+        /* Линия по точкам без баров — своя ширина/высота не нужна, тянется
+           на всю карточку: viewBox у svg уже задаёт масштаб */
+        .sparkline { width: 100%; height: 120px; display: block; color: var(--accent); margin: 12px 0 6px; }
+
         /* Развёрнутый контекст лога бывает одной строкой в десятки килобайт:
            без ограничения он растягивает колонку и уносит вёрстку всей таблицы */
         /* Колонки лога фиксированы: иначе развёрнутый контекст перетягивает
