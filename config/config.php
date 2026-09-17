@@ -168,6 +168,9 @@ return [
         'maintenance_interval' => Env::int('QUEUE_MAINTENANCE_INTERVAL', 300),
         'stuck_minutes'        => Env::int('QUEUE_STUCK_MINUTES', 15),
         'keep_days'            => Env::int('QUEUE_KEEP_DAYS', 7),
+        // Подстраховка без отдельного демона — см. Queue\HitWorker.
+        // По умолчанию выключено: это не замена настоящему воркеру
+        'process_on_hit' => Env::bool('QUEUE_PROCESS_ON_HIT', false),
     ],
 
     'cache' => [

@@ -23,6 +23,7 @@ use Rsgrinko\Proton\Support\Config;
 use Rsgrinko\Proton\Support\Logger;
 use Rsgrinko\Proton\Support\Maintenance;
 use Rsgrinko\Proton\Support\Metrics;
+use Rsgrinko\Proton\Queue\HitWorker;
 use Rsgrinko\Proton\Support\ProtonException;
 use Rsgrinko\Proton\Support\RequestId;
 use Rsgrinko\Proton\Support\Settings;
@@ -81,6 +82,10 @@ final class Kernel
         } catch (Throwable $e) {
             $this->logger->warning('Не удалось записать показатели', ['error' => $e->getMessage()]);
         }
+
+        // Подстраховка без отдельного демона — выключено по умолчанию,
+        // см. Queue\HitWorker
+        HitWorker::run();
 
         return $response;
     }
