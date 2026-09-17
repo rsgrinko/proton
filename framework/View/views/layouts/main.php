@@ -350,10 +350,18 @@ $theme = (!$viewer->isGuest() && $viewer->user() !== null) ? $viewer->user()->th
         .log-context { display: block; max-width: min(100%, 900px); }
         .log-context pre { max-width: 100%; margin: 6px 0 0; overflow-x: auto; word-break: break-all; }
 
-        /* Развёрнутый список изменений в строке журнала — без своего фона и
-           рамки он сливался с полосой чётной строки списка. table-layout:
-           fixed — не по содержимому: раскрытие <details> не заставляет
-           столбцы всей таблицы журнала скакать по ширине */
+        /* Та же ловушка, что у логов: без фиксированных ширин раскрытие
+           «что изменилось» в одной строке меняет содержимое только колонки
+           «Описание», но браузер пересчитывает пропорции ВСЕЙ таблицы —
+           «Когда»/«Кто»/«Действие»/«Адрес» едут туда-сюда. Фиксируем все
+           колонки, кроме «Описание» — она одна гибкая и забирает остаток */
+        table.audit th:nth-child(1), table.audit td:nth-child(1) { width: 130px; }
+        table.audit th:nth-child(2), table.audit td:nth-child(2) { width: 130px; }
+        table.audit th:nth-child(3), table.audit td:nth-child(3) { width: 110px; }
+        table.audit th:nth-child(5), table.audit td:nth-child(5) { width: 130px; }
+
+        /* Вложенная таблица «что изменилось» — своей шириной внутри уже
+           гибкой колонки «Описание», по content не растягивается */
         .diff { table-layout: fixed; width: 100%; margin-top: 6px; background: var(--info-bg); border-radius: 6px; overflow: hidden; }
         .diff td { border-bottom: 1px solid var(--border); overflow-wrap: break-word; }
         .diff td:first-child { width: 160px; }

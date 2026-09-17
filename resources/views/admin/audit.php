@@ -21,7 +21,7 @@ use Rsgrinko\Proton\View\View;
         <p class="muted">Ничего не нашлось.</p>
     <?php } else { ?>
         <div class="table-wrap">
-            <table class="list">
+            <table class="list audit">
                 <tr class="head">
                     <th><?= View::partial('sort', ['filters' => $filters, 'route' => 'admin.audit', 'column' => 'created_at', 'label' => 'Когда']) ?></th>
                     <th>Кто</th>
