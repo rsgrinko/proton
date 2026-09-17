@@ -86,7 +86,7 @@ final class Audit
         foreach ($after as $field => $value) {
             $old = $before[$field] ?? null;
 
-            if ((string) $old === (string) $value) {
+            if (self::same($old, $value)) {
                 continue;
             }
 
@@ -96,6 +96,26 @@ final class Audit
         }
 
         return $changes;
+    }
+
+    /**
+     * Списки (права роли, события вебхука) сравниваем по составу, а не как
+     * строку: PHP приводит любой массив к «Array», и смена состава читалась
+     * бы как «ничего не изменилось».
+     */
+    private static function same(mixed $old, mixed $value): bool
+    {
+        if (is_array($old) || is_array($value)) {
+            $old   = array_map('strval', (array) $old);
+            $value = array_map('strval', (array) $value);
+
+            sort($old);
+            sort($value);
+
+            return $old === $value;
+        }
+
+        return (string) $old === (string) $value;
     }
 
     /**

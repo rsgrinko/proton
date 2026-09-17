@@ -351,9 +351,12 @@ $theme = (!$viewer->isGuest() && $viewer->user() !== null) ? $viewer->user()->th
         .log-context pre { max-width: 100%; margin: 6px 0 0; overflow-x: auto; word-break: break-all; }
 
         /* Развёрнутый список изменений в строке журнала — без своего фона и
-           рамки он сливался с полосой чётной строки списка */
-        .diff { margin-top: 6px; background: var(--info-bg); border-radius: 6px; overflow: hidden; }
-        .diff td { border-bottom: 1px solid var(--border); }
+           рамки он сливался с полосой чётной строки списка. table-layout:
+           fixed — не по содержимому: раскрытие <details> не заставляет
+           столбцы всей таблицы журнала скакать по ширине */
+        .diff { table-layout: fixed; width: 100%; margin-top: 6px; background: var(--info-bg); border-radius: 6px; overflow: hidden; }
+        .diff td { border-bottom: 1px solid var(--border); overflow-wrap: break-word; }
+        .diff td:first-child { width: 160px; }
         .diff tr:last-child td { border-bottom: none; }
 
         .attachments { display: flex; flex-wrap: wrap; gap: 12px; }
