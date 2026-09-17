@@ -6,8 +6,12 @@ namespace Rsgrinko\Proton\Support;
 
 use Rsgrinko\Proton\Access\Permission;
 use Rsgrinko\Proton\Access\Viewer;
+use Rsgrinko\Proton\Backup\Backup;
 use Rsgrinko\Proton\Cache\Cache;
+use Rsgrinko\Proton\Models\ApiToken;
+use Rsgrinko\Proton\Models\Role;
 use Rsgrinko\Proton\Models\User;
+use Rsgrinko\Proton\Models\Webhook;
 use Rsgrinko\Proton\Queue\Queue;
 
 /**
@@ -104,6 +108,34 @@ final class Widgets
             ];
         });
 
+        self::register('roles', 'Роли', Permission::ROLES_MANAGE, static function (): array {
+            return [
+                'value' => Role::query()->count(),
+                'hint'  => Role::query()->where('is_system', 0)->count() . ' своих',
+                'route' => 'admin.roles',
+            ];
+        });
+
+        self::register('tokens', 'Ключи API', Permission::USERS_MANAGE, static function (): array {
+            $expiring = count(ApiToken::expiringWithin(30));
+
+            return [
+                'value' => ApiToken::query()->where('active', 1)->count(),
+                'hint'  => $expiring > 0 ? $expiring . ' истекают в этом месяце' : 'сроки в порядке',
+                'route' => 'admin.tokens',
+            ];
+        });
+
+        self::register('webhooks', 'Вебхуки', Permission::WEBHOOKS_MANAGE, static function (): array {
+            $failing = Webhook::query()->where('active', 1)->where('failures', '>', 0)->count();
+
+            return [
+                'value' => Webhook::query()->where('active', 1)->count(),
+                'hint'  => $failing > 0 ? $failing . ' со сбоями' : 'сбоев нет',
+                'route' => 'admin.webhooks',
+            ];
+        });
+
         self::register('queue', 'В очереди', Permission::SYSTEM_MANAGE, static function (): array {
             $stats = Queue::stats();
 
@@ -111,6 +143,17 @@ final class Widgets
                 'value' => (int) ($stats[Queue::QUEUED] ?? 0),
                 'hint'  => 'с ошибкой: ' . (int) ($stats[Queue::FAILED] ?? 0),
                 'route' => 'admin.queue',
+            ];
+        });
+
+        self::register('backups', 'Копии', Permission::SYSTEM_MANAGE, static function (): array {
+            $files = Backup::files();
+            $last  = $files[0] ?? null;
+
+            return [
+                'value' => count($files),
+                'hint'  => $last === null ? 'копий ещё нет' : 'последняя ' . date('d.m в H:i', strtotime((string) $last['created'])),
+                'route' => 'admin.backups',
             ];
         });
 
