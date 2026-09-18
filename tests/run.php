@@ -28,6 +28,7 @@ use Rsgrinko\Proton\Database\Migrator;
 use Rsgrinko\Proton\Support\Config;
 use Rsgrinko\Proton\Support\Container;
 use Rsgrinko\Proton\Support\Env;
+use Rsgrinko\Proton\Support\Settings;
 
 /** @var array<string, string> Опции запуска: от bin/proton test или из своего argv */
 $options = $GLOBALS['test_options'] ?? [];
@@ -283,8 +284,12 @@ function withOwnDatabase(callable $body): mixed
 
     Connection::setInstance($own);
 
-    // Контейнер держит собранные объекты, а они запомнили прежнее подключение
+    // Контейнер держит собранные объекты, а они запомнили прежнее подключение.
+    // У Settings свой статический кэш значений из базы: он не знает о подмене
+    // подключения, и без сброса тест, заглянувший в настройки на своей базе,
+    // подсунул бы это значение соседям на общей
     Container::setInstance(null);
+    Settings::reset();
 
     try {
         if ($settings['driver'] === 'mysql') {
@@ -297,6 +302,7 @@ function withOwnDatabase(callable $body): mixed
     } finally {
         Connection::setInstance($previous);
         Container::setInstance(null);
+        Settings::reset();
     }
 }
 
