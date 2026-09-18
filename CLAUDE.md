@@ -118,7 +118,7 @@ stubs/                заготовки генераторов, stubs/crud/ —
 tests/                свой раннер (run.php) и тесты
 docs/                 документация: START, DATABASE, MIGRATIONS, ROUTING, ACCESS,
                       CONTAINER, QUEUE, MAIL, WEBHOOKS, NOTIFICATIONS, SETTINGS,
-                      BACKUP, LISTS, METRICS, CONSOLE, TESTS, DEPLOY,
+                      BACKUP, LISTS, METRICS, CONSOLE, TESTS, DEPLOY, UPDATING,
                       STATUS (на чём остановились)
 public/index.php      единственная точка входа
 bin/proton            консольная утилита

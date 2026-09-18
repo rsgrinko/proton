@@ -264,4 +264,5 @@ systemctl enable --now proton-worker
 | [docs/CONSOLE.md](docs/CONSOLE.md) | команды и генераторы |
 | [docs/TESTS.md](docs/TESTS.md) | как писать и гонять тесты |
 | [docs/DEPLOY.md](docs/DEPLOY.md) | nginx, php-fpm, systemd, обслуживание |
+| [docs/UPDATING.md](docs/UPDATING.md) | как переносить обновления ядра в свой проект |
 | [docs/STATUS.md](docs/STATUS.md) | на чём остановились и что дальше |
