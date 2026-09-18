@@ -1,66 +1,325 @@
 name: Тесты
 
+# То же, что и в .gitea/workflows/tests.yml, но для GitHub.
+# Gitea читает свой каталог и этот файл не трогает, так что прогон не задваивается.
+#
+# Отличие одно: здесь код забирает actions/checkout. Раннеры GitHub одноразовые,
+# место на диске экономить не для кого, а node в контейнер подкладывает сам GitHub;
+# git в образе php нет, но actions/checkout идёт своим Node.js с раннера и работает
+# ещё до того, как стартует контейнер задания.
+
 on:
   push:
-    branches: [main]
+    branches:
+      - main
   pull_request:
+  workflow_dispatch:
 
 jobs:
-  sqlite:
-    name: PHP ${{ matrix.php }} · SQLite
+  tests:
+    name: Тесты
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        php: ['8.1', '8.3']
+    container:
+      image: php:8.3-cli
+
+    # Базу для тестов ставим прямо в контейнер задания, а не поднимаем сервисом:
+    # сервис-контейнеры на своём раннере gitea не заводятся (имя резолвится, а порт
+    # закрыт — сервер внутри не стартует), да и одинаковые шаги на обоих CI проще
+    # держать в голове. Боевая база здесь не участвует: ни адреса, ни пароля прода
+    # в CI нет, а раннер тестов вдобавок останавливается, если имя тестовой базы
+    # совпало с боевым (testRefuseProductionDatabase в tests/run.php).
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Забрать код
+        uses: actions/checkout@v5
 
-      - uses: shivammathur/setup-php@v2
-        with:
-          php-version: ${{ matrix.php }}
-          extensions: pdo_sqlite, pdo_mysql, mbstring, openssl
-          coverage: none
-
-      - name: Синтаксис всех файлов проекта
+      # На свежем чек-ауте .env нет вовсе (в репозиторий не попадает), а он
+      # нужен не только для DB_*/MAIL_* — Installer::installed() проверяет
+      # его физическое наличие (is_file), и без файла на диске Authenticate
+      # и Guest считают приложение неустановленным и уводят любой запрос на
+      # /install. Берём .env.example как есть — он весь на дефолтах (sqlite,
+      # драйвер почты log) — и дописываем свой ключ той же командой, что
+      # и на бою
+      - name: Подготовить .env
+        shell: bash
         run: |
-          find app bin config database framework migrations public resources routes tests -name '*.php' -print0 \
-            | xargs -0 -n1 php -l
+          set -e
+          cp .env.example .env
+          php bin/proton app:key
 
-      - name: php bin/proton test
+      # Расширения спрашиваем у самого PHP: `php -m | grep -q` в конвейере с pipefail
+      # роняет шаг на найденном расширении — grep выходит по первому совпадению,
+      # и php получает SIGPIPE. pdo_sqlite, mbstring, openssl, json и session в
+      # php:8.3-cli уже вкомпилированы — ставить их не нужно
+      - name: Проверить окружение
+        shell: bash
+        run: |
+          set -e
+          php -v
+          php -m
+          php -r 'foreach (["pdo_sqlite", "openssl", "mbstring", "json", "session"] as $ext) {
+              if (!extension_loaded($ext)) {
+                  fwrite(STDERR, "В образе нет расширения " . $ext . PHP_EOL);
+                  exit(1);
+              }
+          }
+          echo "Расширения на месте" . PHP_EOL;'
+
+      - name: Синтаксис
+        shell: bash
+        run: |
+          set -e
+          find app bin config database framework migrations public resources routes tests -name '*.php' -not -path './var/*' -print0 \
+            | xargs -0 -n1 -P4 php -l > /dev/null
+
+      - name: Тесты
+        shell: bash
         run: php bin/proton test
 
-  mysql:
-    name: PHP 8.3 · MySQL
-    runs-on: ubuntu-latest
-    services:
-      mysql:
-        image: mysql:8
+      # Второй прогон в случайном порядке: ловит тесты, которые держатся на соседях
+      # (общая база на весь прогон). Упал только он — смотрите напечатанный seed
+      # и повторяйте локально: php bin/proton test --shuffle=<seed>
+      - name: Тесты в случайном порядке
+        shell: bash
+        run: php bin/proton test --shuffle
+
+      # Миграции обязаны откатываться начисто: CLAUDE.md требует честный down().
+      # Прогоняем полный цикл на дефолтной SQLite — это настоящая проверка
+      # обратимости, которую не заменит чтение исходников.
+      - name: Обратимость миграций
+        shell: bash
+        run: |
+          set -e
+          echo "Накат миграций"
+          php bin/proton migrate
+          echo "Откат последней пачки"
+          php bin/proton migrate:rollback --force
+          echo "Повторный накат"
+          php bin/proton migrate
+          echo "Миграции обратимы"
+
+      # Ветки кода, которые есть только в MySQL (диалект Schema/Blueprint, ON
+      # DUPLICATE KEY, GET_LOCK у миграций), раньше проверялись только чтением
+      # исходников. Отсюда и ниже — настоящий MySQL-совместимый сервер в контейнере.
+      # База для тестов ставится сюда же, в контейнер задания. Прод — MySQL,
+      # MariaDB здесь как совместимая и лёгкая замена для CI.
+      - name: Поставить MariaDB
+        shell: bash
+        run: |
+          set -e
+          docker-php-ext-install -j"$(nproc)" pdo_mysql
+          php -r 'exit(extension_loaded("pdo_mysql") ? 0 : 1);'
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends mariadb-server
+          mariadbd --version
+
+      - name: Поднять MariaDB
+        shell: bash
+        run: |
+          set -e
+          mkdir -p /run/mysqld /var/lib/mysql
+          chown -R mysql:mysql /run/mysqld /var/lib/mysql
+
+          # Каталог данных в образе пуст — заводим его сами
+          if [ ! -d /var/lib/mysql/mysql ]; then
+            mariadb-install-db --user=mysql --datadir=/var/lib/mysql > /dev/null
+          fi
+
+          mariadbd --user=mysql --bind-address=127.0.0.1 --skip-name-resolve > /tmp/mariadb.log 2>&1 &
+
+          for i in $(seq 1 60); do
+            if mariadb-admin ping --silent 2>/dev/null; then
+              echo "MariaDB поднялась за $i попыток"
+              break
+            fi
+            sleep 1
+          done
+
+          if ! mariadb-admin ping --silent 2>/dev/null; then
+            echo "MariaDB не поднялась"; cat /tmp/mariadb.log; exit 1
+          fi
+
+          # Пользователь для тестов: права на всё, потому что раннер заводит вторую
+          # базу proton_test_own под тесты, которые хозяйничают
+          mariadb -e "CREATE DATABASE IF NOT EXISTS proton_test CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+                      CREATE USER IF NOT EXISTS 'ci'@'%' IDENTIFIED BY 'ci-mariadb';
+                      GRANT ALL PRIVILEGES ON *.* TO 'ci'@'%' WITH GRANT OPTION;
+                      FLUSH PRIVILEGES;"
+
+          php -r '
+          $pdo = new PDO("mysql:host=127.0.0.1;port=3306;dbname=proton_test", "ci", "ci-mariadb");
+          echo "PDO подключился: " . $pdo->query("SELECT VERSION()")->fetchColumn() . PHP_EOL;'
+
+      # Схему накатывает и откатывает та же команда, что и на бою. В MySQL/MariaDB
+      # каждый ALTER коммитится сам, поэтому обратимость здесь проверяется честнее,
+      # чем на SQLite с её транзакционным DDL.
+      - name: Миграции на MariaDB
+        shell: bash
         env:
-          MYSQL_ALLOW_EMPTY_PASSWORD: 'yes'
-          MYSQL_DATABASE: proton_test
-        ports:
-          - 3306:3306
-        options: >-
-          --health-cmd="mysqladmin ping"
-          --health-interval=5s
-          --health-timeout=5s
-          --health-retries=10
-    steps:
-      - uses: actions/checkout@v4
+          DB_DRIVER: mysql
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_DATABASE: proton_test
+          DB_USERNAME: ci
+          DB_PASSWORD: ci-mariadb
+        run: |
+          set -e
+          php bin/proton migrate
+          php bin/proton migrate:status
+          echo "Откат последней пачки"
+          php bin/proton migrate:rollback --force
+          echo "Повторный накат"
+          php bin/proton migrate
+          echo "Миграции обратимы и на MariaDB"
 
-      - uses: shivammathur/setup-php@v2
-        with:
-          php-version: '8.3'
-          extensions: pdo_sqlite, pdo_mysql, mbstring, openssl
-          coverage: none
-
-      - name: php bin/proton test (TEST_DB_DRIVER=mysql)
+      # Тот же набор тестов на живой базе. Раннер сам сносит таблицы перед прогоном
+      # и заводит вторую базу proton_test_own под тесты, которые хозяйничают.
+      # DB_* здесь не задаются нарочно: тестовая база задаётся только TEST_DB_*.
+      - name: Тесты на MariaDB
+        shell: bash
         env:
           TEST_DB_DRIVER: mysql
           TEST_DB_HOST: 127.0.0.1
           TEST_DB_PORT: 3306
           TEST_DB_DATABASE: proton_test
-          TEST_DB_USERNAME: root
-          TEST_DB_PASSWORD: ''
+          TEST_DB_USERNAME: ci
+          TEST_DB_PASSWORD: ci-mariadb
         run: php bin/proton test
+
+      # Настоящий встроенный сервер и удары по HTTP: проверяет public/index.php,
+      # роутинг на уровне HTTP и реальную загрузку конфигурации/БД при старте.
+      - name: Smoke — реальный HTTP-сервер
+        shell: bash
+        run: |
+          set -e
+          PORT=8080
+          ADDR="127.0.0.1:$PORT"
+
+          # Схема обязательна: SystemController::health делает SELECT 1 вне блока
+          # перехвата БД и упадёт с 500, если таблиц нет. Попутно — проверка
+          # миграций end-to-end на дефолтной SQLite (.env уже подготовлен шагом
+          # «Подготовить .env» — без файла на диске Installer::installed() не
+          # считает приложение установленным, и любой запрос уйдёт на /install)
+          # Открываем /metrics только себе: пустой METRICS_ALLOW закрывает его всем
+          export METRICS_ALLOW=127.0.0.1
+          php bin/proton migrate
+
+          # Маленький HTTP-клиент без curl (в php:8.3-cli curl не гарантирован):
+          # пишет "STATUS=NNN" в stderr, тело — в stdout.
+          cat > /tmp/http_get.php <<'PHP'
+          <?php
+          $url = $argv[1];
+          $ctx = stream_context_create(['http' => ['ignore_errors' => true, 'timeout' => 5, 'follow_location' => false]]);
+          $body = @file_get_contents($url, false, $ctx);
+          $status = 0;
+          foreach ($http_response_header ?? [] as $h) {
+              if (preg_match('#^HTTP/\S+\s+(\d{3})#', $h, $m)) {
+                  $status = (int) $m[1];
+              }
+          }
+          if ($body === false) {
+              $body = '';
+          }
+          fwrite(STDERR, "STATUS=$status\n");
+          echo $body;
+          PHP
+
+          # Клиент реального входа: GET формы логина, вытаскивает CSRF-токен и печеньку,
+          # шлёт POST. Ждёт 302 и редирект НЕ на /login (иначе логин отвергнут).
+          cat > /tmp/login_check.php <<'PHP'
+          <?php
+          $base = rtrim($argv[1], '/');
+          $login = $argv[2] ?? '';
+          $password = $argv[3] ?? '';
+          $url = $base . '/login';
+          $ctx = stream_context_create(['http' => ['ignore_errors' => true, 'timeout' => 5, 'follow_location' => false]]);
+          $body = @file_get_contents($url, false, $ctx);
+          $cookies = [];
+          foreach ($http_response_header ?? [] as $h) {
+              if (preg_match('/^Set-Cookie:\s*([^=;]+)=([^;]+)/i', $h, $m)) {
+                  $cookies[trim($m[1])] = trim($m[2]);
+              }
+          }
+          if (!preg_match('/name="_token"\s+value="([^"]*)"/', (string)$body, $t)) {
+              fwrite(STDERR, "STATUS=0\n");
+              fwrite(STDERR, "Не нашли _token в форме логина\n");
+              echo (string)$body;
+              exit(1);
+          }
+          $token = $t[1];
+          $cookie = '';
+          foreach ($cookies as $k => $v) { $cookie .= $k . '=' . $v . '; '; }
+          $post = http_build_query(['login' => $login, 'password' => $password, '_token' => $token]);
+          $ctx2 = stream_context_create(['http' => [
+              'ignore_errors' => true,
+              'timeout' => 5,
+              'follow_location' => false,
+              'method' => 'POST',
+              'header' => "Content-Type: application/x-www-form-urlencoded\r\nCookie: " . rtrim($cookie) . "\r\n",
+              'content' => $post,
+          ]]);
+          $resp = @file_get_contents($url, false, $ctx2);
+          $status = 0;
+          $location = '';
+          foreach ($http_response_header ?? [] as $h) {
+              if (preg_match('#^HTTP/\S+\s+(\d{3})#', $h, $m)) { $status = (int)$m[1]; }
+              if (preg_match('#^Location:\s*(.+)$#i', $h, $m)) { $location = trim($m[1]); }
+          }
+          fwrite(STDERR, "STATUS=$status LOCATION=$location\n");
+          if ($status === 302 && $location !== '' && $location !== '/login') {
+              exit(0);
+          }
+          echo (string)$resp;
+          exit(1);
+          PHP
+
+          php -S "$ADDR" -t public public/index.php > /tmp/proton-server.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill $SERVER_PID 2>/dev/null || true' EXIT
+
+          for i in $(seq 1 30); do
+            if php -r '@$c = file_get_contents("http://'"$ADDR"'/api/v1/health"); exit($c === false ? 1 : 0);' 2>/dev/null; then
+              echo "Сервер поднялся за $i попыток"
+              break
+            fi
+            sleep 1
+          done
+
+          if ! php -r '@$c = file_get_contents("http://'"$ADDR"'/api/v1/health"); exit($c === false ? 1 : 0);' 2>/dev/null; then
+            echo "Сервер не поднялся"; cat /tmp/proton-server.log; exit 1
+          fi
+
+          check() {
+            local path="$1" expect="$2"
+            php /tmp/http_get.php "http://$ADDR$path" > /tmp/body.txt 2>/tmp/status.txt
+            local code; code="$(sed 's/STATUS=//' /tmp/status.txt | tr -d '\r')"
+            echo "$path -> $code"
+            if [ "$code" != "$expect" ]; then
+              echo "Ожидали $expect, получили $code"; cat /tmp/proton-server.log; cat /tmp/body.txt; exit 1
+            fi
+          }
+
+          check /api/v1/health 200
+          if ! grep -q '"status"' /tmp/body.txt; then
+            echo "В /api/v1/health нет поля status"; cat /tmp/body.txt; exit 1
+          fi
+
+          check /metrics 200
+          if ! grep -q 'proton_' /tmp/body.txt; then
+            echo "В /metrics нет метрик proton_"; cat /tmp/body.txt; exit 1
+          fi
+
+          # Приложение ещё не установлено (нет пользователей) — любой адрес уводит
+          # на /install, и он реально отдаётся (страница установщика, код 200)
+          check /install 200
+
+          # Заводим первого пользователя — установщик закрывается сам, дальше
+          # обычный вход. Первому пользователю роль администратора даётся сама
+          php bin/proton user:create ci --password=secret123 --name=CI
+          check /login 200
+
+          if ! php /tmp/login_check.php "http://$ADDR" ci secret123; then
+            echo "Вход не прошёл"; cat /tmp/proton-server.log; exit 1
+          fi
+
+          echo "Smoke-проверка сервера прошла"
