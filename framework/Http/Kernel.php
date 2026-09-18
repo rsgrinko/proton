@@ -19,6 +19,7 @@ use Rsgrinko\Proton\Http\Middleware\Install;
 use Rsgrinko\Proton\Http\Middleware\Signed;
 use Rsgrinko\Proton\Http\Middleware\Throttle;
 use Rsgrinko\Proton\Http\Middleware\VerifyCsrf;
+use Rsgrinko\Proton\Events\Events;
 use Rsgrinko\Proton\Support\Config;
 use Rsgrinko\Proton\Support\Logger;
 use Rsgrinko\Proton\Support\Maintenance;
@@ -83,6 +84,11 @@ final class Kernel
         } catch (Throwable $e) {
             $response = $this->finish($this->crashed($request, $e));
         }
+
+        // Что-то сделать после каждого ответа, не патча Kernel, — сюда, а не в
+        // прямой вызов внутри этого метода: слушатель регистрируется в
+        // config/events.php, упавший слушатель не портит страницу (см. Events::fire)
+        Events::fire('http.responded', ['request' => $request, 'response' => $response]);
 
         // Счётчики пишутся после ответа и молча: сорванный подсчёт не повод
         // портить страницу

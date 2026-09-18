@@ -84,6 +84,14 @@ final class Application
             Commands\WebhookListCommand::class,
             Commands\WebhookTestCommand::class,
         ],
+        'Обновление ядра' => [
+            Commands\CoreVersionCommand::class,
+            Commands\CoreBumpCommand::class,
+            Commands\CoreCheckCommand::class,
+            Commands\CoreDiffCommand::class,
+            Commands\CoreSyncCommand::class,
+            Commands\CoreLatestCommand::class,
+        ],
     ];
 
     /** @var array<int, string> Позиционные аргументы */

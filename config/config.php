@@ -121,6 +121,13 @@ return [
         'verify_peer' => Env::bool('HTTP_VERIFY_PEER', true),
     ],
 
+    // Откуда core:latest/core:diff --remote берут свежую версию ядра —
+    // свой адрес у каждого проекта (gitea, зеркало на GitHub)
+    'core' => [
+        'repo'   => Env::string('PROTON_CORE_REPO', 'https://github.com/rsgrinko/proton'),
+        'branch' => Env::string('PROTON_CORE_BRANCH', 'main'),
+    ],
+
     'notifications' => [
         // Прочитанные уведомления старше срока убирает воркер; непрочитанные
         // не трогаются вовсе — человек их ещё не видел

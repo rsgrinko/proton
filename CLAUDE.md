@@ -118,8 +118,8 @@ stubs/                заготовки генераторов, stubs/crud/ —
 tests/                свой раннер (run.php) и тесты
 docs/                 документация: START, DATABASE, MIGRATIONS, ROUTING, ACCESS,
                       CONTAINER, QUEUE, MAIL, WEBHOOKS, NOTIFICATIONS, SETTINGS,
-                      BACKUP, LISTS, METRICS, CONSOLE, TESTS, DEPLOY, UPDATING,
-                      STATUS (на чём остановились)
+                      BACKUP, LISTS, METRICS, CONSOLE, TESTS, DEPLOY,
+                      CORE_UPDATES, UPDATING, STATUS (на чём остановились)
 public/index.php      единственная точка входа
 bin/proton            консольная утилита
 var/                  runtime: база SQLite, логи, кэш, загруженные файлы
@@ -321,6 +321,10 @@ php bin/proton backup:create          копия базы с проверкой
 php bin/proton backup:list [--check]  список копий
 php bin/proton backup:restore <файл> --force   восстановление (крайняя мера)
 php bin/proton backup:ship <файл> [--queue]    отправить копию на FTP
+php bin/proton core:version|core:bump [patch|minor|major] [--note=] [--breaking]
+php bin/proton core:check [--baseline]        контрольные суммы framework/ против своей базы
+php bin/proton core:diff|core:sync [--apply] (--path=<каталог>|--remote)   перенос ядра в другой проект
+php bin/proton core:latest            версия и changelog ядра из PROTON_CORE_REPO
 php bin/proton status                самопроверка
 php bin/proton route:list|cache:clear|logs:purge|app:key|seed
 ```

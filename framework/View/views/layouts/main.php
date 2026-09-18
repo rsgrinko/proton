@@ -629,6 +629,8 @@ $theme = (!$viewer->isGuest() && $viewer->user() !== null) ? $viewer->user()->th
             .checks .item { flex-direction: column; gap: 2px; }
         }
     </style>
+    <?php /* Свои стили поверх ядра — без переопределения этого файла целиком, см. View::fillSlot() */ ?>
+    <?= View::slot('layout.head') ?>
 </head>
 <body>
 <?php if (!$bare && View::isImpersonating()) { ?>
@@ -677,6 +679,8 @@ $theme = (!$viewer->isGuest() && $viewer->user() !== null) ? $viewer->user()->th
 
             <?php if (!$viewer->isGuest()) { ?>
                 <div class="who">
+                    <?= View::slot('layout.topbar') ?>
+
                     <a class="muted small" href="<?= View::e(View::route('notifications')) ?>" title="Уведомления">
                         Уведомления<?= $unread > 0 ? ' <span class="badge warn">' . $unread . '</span>' : '' ?>
                     </a>

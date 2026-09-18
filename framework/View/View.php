@@ -27,6 +27,9 @@ final class View
     /** @var array<string, mixed> Данные, доступные всем шаблонам */
     private static array $shared = [];
 
+    /** @var array<string, array<int, string>> Содержимое слотов каркаса */
+    private static array $slots = [];
+
     /**
      * Страница внутри общего каркаса.
      *
@@ -97,6 +100,26 @@ final class View
     public static function share(string $key, mixed $value): void
     {
         self::$shared[$key] = $value;
+    }
+
+    /**
+     * Кладёт разметку в именованное место каркаса (`config/services.php` или
+     * `bootstrap.php` приложения) — доп. стили, свой пункт в шапке — так,
+     * чтобы не переопределять весь `layouts/main.php` целиком ради одной
+     * строки и не расходиться с ним при следующем обновлении ядра. Слот
+     * можно заполнить несколько раз — разметка приложений накапливается.
+     */
+    public static function fillSlot(string $name, string $content): void
+    {
+        self::$slots[$name][] = $content;
+    }
+
+    /**
+     * Содержимое слота для шаблона — пусто, если никто его не заполнил.
+     */
+    public static function slot(string $name): string
+    {
+        return implode('', self::$slots[$name] ?? []);
     }
 
     /**
