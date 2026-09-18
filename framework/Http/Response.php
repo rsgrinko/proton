@@ -120,6 +120,18 @@ final class Response
     }
 
     /**
+     * Меняет готовое тело — нужно панели отладки: она подставляется в конце
+     * Kernel::handle(), когда тело уже собрано, чтобы попасть в него зная
+     * итоговые отметки времени.
+     */
+    public function withBody(string $body): self
+    {
+        $this->body = $body;
+
+        return $this;
+    }
+
+    /**
      * Готовая строка Set-Cookie.
      */
     public function withCookie(string $cookie): self

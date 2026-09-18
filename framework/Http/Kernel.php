@@ -24,6 +24,7 @@ use Rsgrinko\Proton\Support\Logger;
 use Rsgrinko\Proton\Support\Maintenance;
 use Rsgrinko\Proton\Support\Metrics;
 use Rsgrinko\Proton\Queue\HitWorker;
+use Rsgrinko\Proton\Support\Profiler;
 use Rsgrinko\Proton\Support\ProtonException;
 use Rsgrinko\Proton\Support\RequestId;
 use Rsgrinko\Proton\Support\Settings;
@@ -52,6 +53,14 @@ final class Kernel
     public function handle(Request $request): Response
     {
         $started = microtime(true);
+
+        // Панели отладки больше неоткуда взять запрос — вьюха рендерится
+        // внутри контроллера и своего доступа к нему не имеет
+        Request::remember($request);
+
+        // Первая отметка на панели: от неё считаются все остальные смещения
+        // на вкладке «Выполнение» — она же и заводит счётчик времени страницы
+        Profiler::mark('kernel: старт', Profiler::relativePath(__FILE__) . ':' . __LINE__);
 
         // Сквозная цепочка: клиент прислал свою или заводим новую
         RequestId::set($request->header(RequestId::HEADER));
@@ -87,7 +96,25 @@ final class Kernel
         // см. Queue\HitWorker
         HitWorker::run();
 
-        return $response;
+        return $this->renderProfiler($response);
+    }
+
+    /**
+     * Меняет заглушку панели отладки (Profiler::PLACEHOLDER) на готовую
+     * разметку — самым последним шагом, когда ответ уже прошёл через все
+     * прослойки обратно и у каждой известна отметка выхода. Раньше панель
+     * рисовалась изнутри контроллера при рендере вида, и добрая половина
+     * жизненного цикла запроса просто не успевала случиться к этому моменту.
+     */
+    private function renderProfiler(Response $response): Response
+    {
+        if (!Profiler::enabled() || !str_contains($response->body(), Profiler::PLACEHOLDER)) {
+            return $response;
+        }
+
+        Profiler::mark('kernel: ответ готов', Profiler::relativePath(__FILE__) . ':' . __LINE__);
+
+        return $response->withBody(str_replace(Profiler::PLACEHOLDER, View::partial('profiler'), $response->body()));
     }
 
     /**

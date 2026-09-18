@@ -384,17 +384,93 @@ $theme = (!$viewer->isGuest() && $viewer->user() !== null) ? $viewer->user()->th
            только строку summary — но position:fixed есть у неё всегда, поэтому
            main.has-profiler ниже держит для этой строки готовое место, а не
            перекрывает последнюю строку таблицы или кнопку внизу страницы */
-        .profiler { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; max-height: 60vh; overflow-y: auto;
-                    background: var(--panel); border-top: 1px solid var(--border); padding: 6px 12px; font-size: 12px; }
+        .profiler { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
+                    background: var(--panel); border-top: 1px solid var(--border); box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.08);
+                    padding: 6px 12px; font-size: 12px; }
         .profiler summary { cursor: pointer; color: var(--muted); }
-        .profiler[open] summary { border-bottom: 1px solid var(--border); padding-bottom: 6px; margin-bottom: 6px; }
+        .profiler[open] summary { border-bottom: 1px solid var(--border); padding-bottom: 6px; margin-bottom: 8px; }
         .profiler .warn { color: var(--warn); }
         .profiler h3 { font-size: 12px; margin: 10px 0 4px; }
-        .profiler table { margin-bottom: 4px; }
-        .profiler td { padding: 2px 6px; border: none; vertical-align: top; }
+        .profiler h3:first-child { margin-top: 0; }
+        .profiler table { width: 100%; margin-bottom: 4px; border-collapse: collapse; }
+        .profiler td { padding: 3px 6px; border: none; vertical-align: top; }
         .profiler td.count { white-space: nowrap; color: var(--muted); }
         .profiler details { margin-top: 8px; }
         .profiler details summary { color: var(--text); }
+        .profiler p.muted { color: var(--muted); margin: 4px 0; }
+
+        /* Вкладки панели — на радиокнопках, без единой строки JavaScript:
+           переключение работает и если скрипты внизу страницы не выполнились.
+           Высота контента фиксирована (.profiler-tab-panels), а не подстраивается
+           под вкладку — иначе панель прыгает по высоте при каждом переключении */
+        .profiler-tabs input[type="radio"] { position: absolute; opacity: 0; pointer-events: none; }
+        .profiler-tab-heads { display: flex; gap: 4px; margin-bottom: 8px; flex-wrap: wrap; }
+        .profiler-tab-heads label {
+            cursor: pointer; padding: 4px 12px; border-radius: 6px 6px 0 0; color: var(--muted);
+            border: 1px solid transparent; border-bottom: 2px solid transparent;
+        }
+        .profiler-tab-heads label:hover { color: var(--text); }
+        .profiler-tab-heads label.has-warn { color: var(--err); }
+        .profiler-tab-panels {
+            height: min(360px, 44vh); overflow-y: auto; overflow-x: hidden;
+            background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px;
+        }
+        .profiler-tab-panels::-webkit-scrollbar { width: 8px; }
+        .profiler-tab-panels::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+        .profiler-panel { display: none; }
+        #profiler-tab-request:checked ~ .profiler-tab-panels .panel-request,
+        #profiler-tab-run:checked ~ .profiler-tab-panels .panel-run,
+        #profiler-tab-sql:checked ~ .profiler-tab-panels .panel-sql,
+        #profiler-tab-cache:checked ~ .profiler-tab-panels .panel-cache { display: block; }
+        #profiler-tab-request:checked ~ .profiler-tab-heads label[for="profiler-tab-request"],
+        #profiler-tab-run:checked ~ .profiler-tab-heads label[for="profiler-tab-run"],
+        #profiler-tab-sql:checked ~ .profiler-tab-heads label[for="profiler-tab-sql"],
+        #profiler-tab-cache:checked ~ .profiler-tab-heads label[for="profiler-tab-cache"] {
+            color: var(--text); background: var(--bg); border-color: var(--border); border-bottom-color: var(--accent);
+        }
+
+        /* Зебра читается быстрее на длинных списках запросов и отметок */
+        .profiler-tab-panels table tr:nth-child(even) { background: var(--panel); }
+
+        /* Стек вызова у SQL-запроса — свёрнут по умолчанию, короткими строками */
+        .profiler .trace { margin-top: 2px; }
+        .profiler .trace summary { color: var(--muted); font-size: 11px; }
+        .profiler .trace ol { margin: 4px 0 0 16px; padding: 0; color: var(--muted); }
+
+        /* Таймлайн: одна полоса на запрос, слева отступ — момент начала,
+           ширина — длительность, обе в процентах от времени всей страницы.
+           Линейка — строка той же таблицы, а не отдельный элемент рядом:
+           только так её метки совпадут с засечками и полосами по-настоящему,
+           а не «на глаз» — у отдельного div и у ячейки таблицы разная
+           раскладка, и проценты в них никогда не совпадают точно */
+        .profiler-timeline td { padding: 2px 6px; }
+        /* Центр по вертикали от фактической высоты строки, а не фиксированный
+           отступ сверху: в «Выполнение» строка бывает двухстрочной (подпись
+           и путь к файлу), и полоска у верхнего края смотрелась подвешенной
+           над пустотой, а не частью строки */
+        .timeline-cell { width: 55%; min-height: 14px; position: relative; }
+        .timeline-cell::before {
+            content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 6px;
+            transform: translateY(-50%); border-radius: 3px; background: var(--panel);
+            border-right: 1px solid var(--border);
+            background-image: linear-gradient(to right, var(--border) 1px, transparent 1px);
+            background-size: 25% 100%;
+        }
+        .timeline-bar {
+            position: absolute; top: 50%; height: 6px; transform: translateY(-50%);
+            border-radius: 3px; min-width: 2px;
+        }
+        .timeline-bar.bar-ok { background: var(--ok); }
+        .timeline-bar.bar-warn { background: var(--warn); }
+        .timeline-bar.bar-error { background: var(--err); }
+
+        .timeline-scale-row td { padding-bottom: 4px; border-bottom: 1px solid var(--border); }
+        .timeline-scale { height: 16px; }
+        .timeline-scale::before { content: none; }
+        .timeline-scale span {
+            position: absolute; top: 0; font-size: 11px; color: var(--muted); white-space: nowrap;
+        }
+        .timeline-scale span.mid { transform: translateX(-50%); }
 
         main.has-profiler { padding-bottom: 34px; }
 
@@ -639,7 +715,15 @@ $theme = (!$viewer->isGuest() && $viewer->user() !== null) ? $viewer->user()->th
 </main>
 <?php } ?>
 
-<?= View::partial('profiler') ?>
+<?php
+/*
+    Панель отладки рисуется не здесь: на этом месте — только заглушка.
+    Kernel::handle() меняет её на готовую разметку в самом конце ответа,
+    когда уже известны отметки выхода из прослоек и контроллера — внутри
+    самого рендера вида их взять неоткуда, ответ ещё не пошёл обратно.
+*/
+echo Profiler::enabled() ? Profiler::PLACEHOLDER : '';
+?>
 
 <?php /*
     Единственный скрипт: кнопка «скопировать» и галочка «отметить все». Без

@@ -39,6 +39,9 @@ final class Request
     /** @var array<string, mixed> Что положили прослойки: пользователь, область видимости */
     public array $attributes = [];
 
+    /** Запрос, который сейчас обслуживается — только для панели отладки, см. current() */
+    private static ?self $current = null;
+
     /**
      * Запрос из суперглобальных переменных.
      */
@@ -346,6 +349,24 @@ final class Request
         }
 
         return [];
+    }
+
+    /**
+     * Запоминает запрос как текущий — панели отладки больше неоткуда его взять:
+     * вьюха рендерится изнутри контроллера и получает только то, что дал ей шаблон.
+     * Тот же приём, что у Router::current() для маршрута.
+     */
+    public static function remember(self $request): void
+    {
+        self::$current = $request;
+    }
+
+    /**
+     * Запрос, который сейчас обслуживается — null вне HTTP (консоль, воркер).
+     */
+    public static function current(): ?self
+    {
+        return self::$current;
     }
 
     /**

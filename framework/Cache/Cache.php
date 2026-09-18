@@ -6,6 +6,7 @@ namespace Rsgrinko\Proton\Cache;
 
 use Rsgrinko\Proton\Database\Connection;
 use Rsgrinko\Proton\Support\Config;
+use Rsgrinko\Proton\Support\Profiler;
 
 /**
  * Кэш на короткое время: тяжёлые сводки, справочники, ответы чужих API.
@@ -61,11 +62,15 @@ final class Cache
      */
     public static function get(string $key): mixed
     {
-        return match (self::driver()) {
+        $value = match (self::driver()) {
             self::DATABASE => self::fromDatabase($key),
             self::ARRAY    => self::fromMemory($key),
             default        => self::fromFile($key),
         };
+
+        Profiler::cache($key, $value !== null);
+
+        return $value;
     }
 
     public static function has(string $key): bool

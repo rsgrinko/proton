@@ -4,11 +4,15 @@ declare(strict_types=1);
 
 namespace Rsgrinko\Proton\Http;
 
+use ReflectionClass;
+use ReflectionException;
+use ReflectionFunction;
 use ReflectionFunctionAbstract;
 use ReflectionMethod;
 use ReflectionNamedType;
 use Rsgrinko\Proton\Support\Config;
 use Rsgrinko\Proton\Support\Container;
+use Rsgrinko\Proton\Support\Profiler;
 use Rsgrinko\Proton\Support\ProtonException;
 
 /**
@@ -288,11 +292,26 @@ final class Router
     /**
      * Прогоняет запрос через прослойки маршрута и вызывает обработчик.
      *
+     * Каждый слой ставит на панели отладки пару отметок — вход и выход: так
+     * на вкладке «Выполнение» видно и порядок, и сколько внутри каждого слоя
+     * прошло времени. Сама панель рисуется не здесь и не сейчас — Kernel
+     * подставляет её в ответ в самом конце, когда все отметки уже случились
+     * (см. Support\Profiler::PLACEHOLDER), поэтому «выход» имеет смысл вести.
+     *
      * @param array<string, string> $params
      */
     private function run(Route $route, Request $request, array $params): Response
     {
-        $next = fn (Request $request): Response => $this->call($route->handler, $request, $params);
+        $label    = 'обработчик: ' . $this->handlerLabel($route->handler);
+        $location = $this->handlerLocation($route->handler);
+
+        $next = function (Request $request) use ($route, $params, $label, $location): Response {
+            Profiler::mark($label . ' →', $location);
+            $response = $this->call($route->handler, $request, $params);
+            Profiler::mark($label . ' ←', $location);
+
+            return $response;
+        };
 
         // Идём с конца, чтобы первая прослойка в списке оказалась внешней
         foreach (array_reverse($route->middleware) as $name) {
@@ -303,14 +322,60 @@ final class Router
                 throw new ProtonException('Прослойка «' . $name . '» не зарегистрирована');
             }
 
-            $handler = $this->middleware[$name];
-            $inner   = $next;
-            $next    = static fn (Request $request): Response => $argument === ''
-                ? $handler($request, $inner)
-                : $handler($request, $inner, $argument);
+            $handler        = $this->middleware[$name];
+            $inner          = $next;
+            $middleware     = 'прослойка: ' . $name . ($argument !== '' ? ':' . $argument : '');
+            $middlewareFile = $this->handlerLocation($handler);
+            $next           = static function (Request $request) use ($handler, $inner, $argument, $middleware, $middlewareFile): Response {
+                Profiler::mark($middleware . ' →', $middlewareFile);
+                $response = $argument === '' ? $handler($request, $inner) : $handler($request, $inner, $argument);
+                Profiler::mark($middleware . ' ←', $middlewareFile);
+
+                return $response;
+            };
         }
 
         return $next($request);
+    }
+
+    /**
+     * Имя обработчика для отметок на панели — класс с методом или «замыкание».
+     *
+     * @param callable|array{0: class-string, 1: string} $handler
+     */
+    private function handlerLabel(mixed $handler): string
+    {
+        return is_array($handler) && is_string($handler[0]) ? $handler[0] . '::' . $handler[1] : 'замыкание';
+    }
+
+    /**
+     * Файл и строка того, что реально выполнится: имя прослойки («auth») само
+     * по себе не говорит, какой класс за ним стоит, а на вкладке «Выполнение»
+     * это первое, что спрашивают при разборе медленного запроса.
+     *
+     * @param callable|array{0: class-string, 1: string} $handler
+     */
+    private function handlerLocation(mixed $handler): string
+    {
+        try {
+            if (is_array($handler) && is_string($handler[0])) {
+                $method = new ReflectionMethod($handler[0], $handler[1]);
+
+                return Profiler::relativePath((string) $method->getFileName()) . ':' . $method->getStartLine();
+            }
+
+            if (is_object($handler) && !($handler instanceof \Closure)) {
+                $file = (new ReflectionClass($handler))->getFileName();
+
+                return $file !== false ? Profiler::relativePath($file) : '';
+            }
+
+            $function = new ReflectionFunction($handler);
+
+            return Profiler::relativePath((string) $function->getFileName()) . ':' . $function->getStartLine();
+        } catch (ReflectionException) {
+            return '';
+        }
     }
 
     /**
