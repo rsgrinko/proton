@@ -192,7 +192,7 @@ test('расписание: задача выполняется один раз 
 });
 
 test('расписание: задачу, которую уже держит другой процесс, run() не дублирует', function (): void {
-    withOwnDatabase(static function (): void {
+    withOwnDatabase(static function (Connection $db): void {
         Scheduler::reset();
 
         $runs = 0;
@@ -201,8 +201,14 @@ test('расписание: задачу, которую уже держит д�
             $runs++;
         });
 
-        // Так выглядит соседний воркер, который уже взялся за эту же задачу
-        $foreign = new Lock(null, 'schedule:test:overlap');
+        // Так выглядит соседний воркер, который уже взялся за эту же задачу.
+        // В MySQL GET_LOCK держится за соединение (см. Lock::acquireMysql) —
+        // Connection::instance() дал бы тот же сеанс, что и у Scheduler::run(),
+        // и переоформил бы свою же блокировку вместо настоящей конкуренции.
+        // На SQLite это не важно: там блокировка — flock() на файле, у каждого
+        // Lock свой дескриптор независимо от Connection
+        $foreignConnection = $db->isSqlite() ? $db : new Connection(testOwnMysqlSettings());
+        $foreign = new Lock($foreignConnection, 'schedule:test:overlap');
 
         assertTrue($foreign->acquire(0));
 

@@ -7,20 +7,18 @@ declare(strict_types=1);
  */
 
 use Rsgrinko\Proton\Cache\Cache;
-use Rsgrinko\Proton\Database\Connection;
 use Rsgrinko\Proton\Models\Setting;
 use Rsgrinko\Proton\Support\Metrics;
 use Rsgrinko\Proton\Support\Monitor;
 
 test('показатели: размер базы считается по драйверу, а не всегда как файл sqlite', function (): void {
+    // Тестовая база бывает и sqlite (файл), и mysql (см. TEST_DB_DRIVER) — оба
+    // раза Metrics::databaseBytes() должен отдать неотрицательное число, для
+    // mysql суммируя data_length + index_length по information_schema.tables
     $storage = Metrics::storage();
 
     assertTrue($storage['database_bytes'] >= 0);
     assertTrue($storage['var_bytes'] >= 0);
-
-    // Тестовая база — sqlite, тут это файл; для mysql тот же метод суммирует
-    // data_length + index_length по information_schema.tables (см. Metrics::databaseBytes)
-    assertTrue(Connection::instance()->isSqlite(), 'тесты всегда идут на своей sqlite');
 });
 
 test('показатели: запросы складываются, ошибки и медленные считаются отдельно', function (): void {
