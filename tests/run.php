@@ -288,15 +288,74 @@ function withOwnDatabase(callable $body): mixed
 
     try {
         if ($settings['driver'] === 'mysql') {
-            testDropTables($own);
+            testResetMysqlOwnDatabase($own);
+        } else {
+            (new Migrator($own))->run();
         }
-
-        (new Migrator($own))->run();
 
         return $body($own);
     } finally {
         Connection::setInstance($previous);
         Container::setInstance(null);
+    }
+}
+
+/**
+ * Своя база MySQL одна и та же на весь прогон (testOwnMysqlSettings всегда
+ * зовёт одно и то же имя), поэтому пересоздавать схему на каждый тест-хозяин
+ * незачем: DROP TABLE и полный накат миграций на MySQL — это DDL, коммитится
+ * каждый шаг отдельно и на диске раннера ощутимо медленнее SQLite. Схему
+ * накатываем только при первом обращении за весь прогон, а дальше просто
+ * чистим данные — снимком, снятым сразу после наката, восстанавливаем то, что
+ * насеяли сами миграции (роли администратора и пользователя), иначе тест-хозяин
+ * получал бы базу без единой роли и падал на «Роль не найдена».
+ */
+function testResetMysqlOwnDatabase(Connection $database): void
+{
+    static $seeded = null;
+
+    if ($seeded === null) {
+        testDropTables($database);
+
+        (new Migrator($database))->run();
+
+        $seeded = [];
+
+        foreach ($database->tables() as $table) {
+            if ($table === 'migrations') {
+                continue;
+            }
+
+            $rows = $database->select('SELECT * FROM `' . str_replace('`', '', $table) . '`');
+
+            if ($rows !== []) {
+                $seeded[$table] = $rows;
+            }
+        }
+
+        return;
+    }
+
+    $database->execute('SET FOREIGN_KEY_CHECKS = 0');
+
+    try {
+        foreach ($database->tables() as $table) {
+            // Таблицу миграций чистить нельзя: без неё Migrator решит, что
+            // схемы нет, и накатит всё заново
+            if ($table === 'migrations') {
+                continue;
+            }
+
+            $database->execute('DELETE FROM `' . str_replace('`', '', $table) . '`');
+        }
+
+        foreach ($seeded as $table => $rows) {
+            foreach ($rows as $row) {
+                $database->insert($table, $row);
+            }
+        }
+    } finally {
+        $database->execute('SET FOREIGN_KEY_CHECKS = 1');
     }
 }
 
