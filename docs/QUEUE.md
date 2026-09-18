@@ -82,6 +82,16 @@ final class ExportJob extends Job
 что-то лежало) — свежее важнее статичного. Шаг без данных для передачи
 `carryToNext()` может не звать вовсе.
 
+Тот же приём на своих классах, без похода в ядро: `App\Commands\NotesPinnedReportCommand`
+ставит цепочку `CountPinnedNotesJob` -> `NotifyPinnedNotesCountJob` — первый
+считает закреплённые заметки пользователя, второй передаёт итог уведомлением
+(`app/Jobs/CountPinnedNotesJob.php`, `app/Jobs/NotifyPinnedNotesCountJob.php`):
+
+```bash
+php bin/proton notes:pinned-report ivan
+php bin/proton worker --once
+```
+
 ### Воркер
 
 ```bash

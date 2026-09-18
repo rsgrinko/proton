@@ -23,9 +23,15 @@ use App\Controllers\Web\NotificationsController;
 use App\Controllers\Web\PasswordController;
 use App\Controllers\Web\ProfileController;
 use App\Controllers\Web\RegisterController;
+use App\Http\Middleware\SlowRequestMiddleware;
 use Rsgrinko\Proton\Http\Router;
 
 return static function (Router $router): void {
+    // Своя прослойка регистрируется здесь же, рядом с маршрутами, которые её
+    // используют, — ядро (Kernel) трогать не нужно. Полный разбор —
+    // docs/ROUTING.md, раздел «Прослойки»
+    $router->middleware('slowlog', new SlowRequestMiddleware());
+
     $router->group(['middleware' => ['csrf']], function (Router $router): void {
         // Веб-установщик: открыт, только пока приложение не установлено.
         // То же самое умеет php bin/proton install
@@ -92,8 +98,11 @@ return static function (Router $router): void {
             });
 
             // Демонстрационный раздел: удаляется целиком вместе с моделью,
-            // контроллером, шаблонами и миграцией
-            $router->group(['prefix' => '/notes'], function (Router $router): void {
+            // контроллером, шаблонами и миграцией. Прослойка slowlog:300 здесь —
+            // тоже часть образца: показывает свою прослойку с аргументом на живом
+            // маршруте, разделу она не принадлежит и переносится вместе с ним
+            // на любой другой раздел или убирается вовсе
+            $router->group(['prefix' => '/notes', 'middleware' => ['slowlog:300']], function (Router $router): void {
                 $router->get('', [NotesController::class, 'index'])->middleware('can:notes.view')->name('notes.index');
                 $router->get('/export', [NotesController::class, 'export'])->middleware('can:notes.view')->name('notes.export');
                 $router->post('/import', [NotesController::class, 'import'])->middleware('can:notes.manage')->name('notes.import');

@@ -41,28 +41,36 @@ return static function (Router $router): void {
 | `can:право` | проверяет право; несколько через черту — «хватит любого» |
 | `api` | ключ API в заголовке `Authorization: Bearer …` |
 | `throttle:120,60` | не больше 120 запросов за 60 секунд |
-| `setup` | страница первого запуска, пока в базе нет пользователей |
+| `install` | страница установки, пока приложение не поставлено |
+| `signed` | пускает только по целой и не протухшей подписи адреса (файл из письма, готовая выгрузка) |
 
 Своя прослойка — класс с методом `__invoke(Request $request, callable $next): Response`,
 зарегистрированный по имени. Ядро трогать не нужно: `$router` в файле маршрутов —
 тот же самый роутер, что и в `Kernel`, поэтому регистрация ложится в начало
 `routes/web.php` (или своего файла из `config/config.php`), рядом с маршрутами,
-которые её используют:
+которые её используют. Рабочий пример — `App\Http\Middleware\SlowRequestMiddleware`
+(`app/Http/Middleware/SlowRequestMiddleware.php`), уже подключённый к разделу
+заметок в `routes/web.php`:
 
 ```php
-final class AuditMiddleware
+final class SlowRequestMiddleware
 {
-    public function __invoke(Request $request, callable $next): Response
+    public function __invoke(Request $request, callable $next, string $thresholdMs = ''): Response
     {
-        $started = microtime(true);
+        $threshold = $thresholdMs === '' ? self::DEFAULT_THRESHOLD_MS : max(1, (int) $thresholdMs);
+        $started   = microtime(true);
 
         $response = $next($request);
 
-        (new Logger('audit'))->info('Запрос', [
-            'path'   => $request->path,
-            'ms'     => round((microtime(true) - $started) * 1000, 1),
-            'status' => $response->status(),
-        ]);
+        $elapsed = (microtime(true) - $started) * 1000;
+
+        if ($elapsed >= $threshold) {
+            (new Logger('slow-requests'))->warning('Медленный запрос раздела', [
+                'method' => $request->method,
+                'path'   => $request->path,
+                'ms'     => round($elapsed, 1),
+            ]);
+        }
 
         return $response;
     }
@@ -71,16 +79,16 @@ final class AuditMiddleware
 
 ```php
 return static function (Router $router): void {
-    $router->middleware('audit', new AuditMiddleware());
+    $router->middleware('slowlog', new SlowRequestMiddleware());
 
-    $router->group(['prefix' => '/admin', 'middleware' => ['csrf', 'auth', 'audit']], function (Router $router): void {
+    $router->group(['prefix' => '/notes', 'middleware' => ['slowlog:300']], function (Router $router): void {
         // …
     });
 };
 ```
 
-Прослойка с аргументом (`audit:orders`) получает его третьим параметром
-`__invoke(Request $request, callable $next, string $argument = '')` — так
+Прослойка с аргументом (`slowlog:300`) получает его третьим параметром
+`__invoke(Request $request, callable $next, string $thresholdMs = '')` — так
 собран `can:право` и `throttle:120,60`.
 
 Право проверяется прослойкой, а не в контроллере: так забыть его можно только
