@@ -336,6 +336,10 @@ final class Message
         }
 
         foreach ((array) ($data['headers'] ?? []) as $name => $value) {
+            // Пропускаем тему, если она случайно оказалась в кастомных заголовках очереди
+            if (strtolower((string)$name) === 'subject') {
+                continue;
+            }
             $message->header((string) $name, (string) $value);
         }
 
