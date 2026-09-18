@@ -168,6 +168,9 @@ return static function (Router $router): void {
             $router->post('/reset', [SettingsController::class, 'reset'])
                 ->middleware('can:' . Permission::SETTINGS_MANAGE)
                 ->name('admin.settings.reset');
+            $router->get('/export-env', [SettingsController::class, 'exportEnv'])
+                ->middleware('can:' . Permission::SETTINGS_MANAGE)
+                ->name('admin.settings.export-env');
         });
 
         $router->group(['prefix' => '/reports', 'middleware' => 'can:' . Permission::SYSTEM_VIEW], function (Router $router): void {

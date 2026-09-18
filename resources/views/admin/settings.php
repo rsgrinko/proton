@@ -27,6 +27,15 @@ $canManage = View::can(Permission::SETTINGS_MANAGE);
         Веб-часть подхватывает правку сразу, а воркеру нужен перезапуск
         (<span class="mono">php bin/proton worker:restart</span>): он держит настройки в памяти.
     </p>
+    <p class="muted small">
+        Ключа приложения и настроек базы здесь нет: их правка может оставить приложение
+        без доступа к данным — это работа с <span class="mono">.env</span> и сервером, а не кнопка в браузере.
+    </p>
+    <?php if ($canManage) { ?>
+        <div class="row">
+            <a class="btn" href="<?= View::e(View::route('admin.settings.export-env')) ?>">Выгрузить .env</a>
+        </div>
+    <?php } ?>
 </div>
 
 <form method="post" action="<?= View::e(View::route('admin.settings')) ?>">

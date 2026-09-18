@@ -110,6 +110,17 @@ final class SettingsController extends Controller
     }
 
     /**
+     * Выгружает .env таким, каким он был бы с уже применёнными правками из
+     * панели, — переносить их на сервер файлом, а не проставлять в форме заново.
+     */
+    public function exportEnv(): Response
+    {
+        Audit::action('settings', 'export-env', 'выгружен .env с настройками из панели');
+
+        return Response::download(Settings::exportEnv(), '.env', 'text/plain; charset=utf-8');
+    }
+
+    /**
      * Текущие значения всех настроек реестра.
      *
      * @return array<string, mixed>
