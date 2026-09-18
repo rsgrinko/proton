@@ -6,6 +6,7 @@ namespace Rsgrinko\Proton\Support;
 
 use Rsgrinko\Proton\Auth\Crypto;
 use Rsgrinko\Proton\Backup\Backup;
+use Rsgrinko\Proton\Core\Updater;
 use Rsgrinko\Proton\Database\Connection;
 use Rsgrinko\Proton\Database\Migrator;
 use Rsgrinko\Proton\Files\Storage;
@@ -75,6 +76,10 @@ final class Diagnostics
             PHP_VERSION,
             'Нужен PHP 8.1 или новее'
         );
+
+        // Не про «пройдено/не пройдено» — просто откуда посмотреть, что
+        // нового в ядре: php bin/proton core:latest, docs/CORE_UPDATES.md
+        $checks[] = self::check(true, 'Версия ядра', (new Updater(APP_ROOT))->localVersion(), '');
 
         foreach (['pdo', 'mbstring', 'openssl', 'json'] as $extension) {
             $checks[] = self::check(
