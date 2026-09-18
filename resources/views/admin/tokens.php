@@ -56,7 +56,7 @@ $canManage = View::can(Permission::TOKENS_MANAGE);
             </label>
 
             <label>
-                <span>Срок в днях</span>
+                <span>Срок в днях (0 - без срока)</span>
                 <input type="number" name="days" min="0" value="0" placeholder="0 — без срока">
             </label>
 

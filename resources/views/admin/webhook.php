@@ -88,6 +88,13 @@ $readOnly  = !$isNew && !$canManage;
     <div class="card">
         <h2>Секрет и состояние</h2>
 
+        <p class="muted small">
+            Секрет подписчику не отправляется — им только считают подпись
+            <span class="mono">X-Proton-Signature</span> посылки, каждая сторона
+            у себя. Как её проверить — на странице списка вебхуков или в
+            <span class="mono">docs/WEBHOOKS.md</span>.
+        </p>
+
         <table class="list">
             <tr>
                 <th>Секрет</th>
