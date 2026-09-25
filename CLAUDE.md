@@ -322,8 +322,9 @@ php bin/proton backup:list [--check]  список копий
 php bin/proton backup:restore <файл> --force   восстановление (крайняя мера)
 php bin/proton backup:ship <файл> [--queue]    отправить копию на FTP
 php bin/proton core:version|core:bump [patch|minor|major] [--note=] [--breaking]
-php bin/proton core:check [--baseline]        контрольные суммы framework/ против своей базы
+php bin/proton core:check [--baseline [--path=|--remote]]   чем framework/ отличается от ядра последней синхронизации
 php bin/proton core:diff|core:sync [--apply] (--path=<каталог>|--remote)   перенос ядра в другой проект
+php bin/proton core:resolve <файл>... (--path=|--remote)   отметить ручное слияние разобранным
 php bin/proton core:latest            версия и changelog ядра из PROTON_CORE_REPO
 php bin/proton status                самопроверка
 php bin/proton route:list|cache:clear|logs:purge|app:key|seed

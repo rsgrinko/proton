@@ -6,8 +6,6 @@ namespace Rsgrinko\Proton\Console\Commands;
 
 use Rsgrinko\Proton\Console\Command;
 use Rsgrinko\Proton\Core\Updater;
-use Rsgrinko\Proton\Support\Config;
-use Rsgrinko\Proton\Support\ProtonException;
 
 /**
  * копирует из ядра то, что безопасно копировать. Без --apply — тот же план,
@@ -15,6 +13,8 @@ use Rsgrinko\Proton\Support\ProtonException;
  */
 final class CoreSyncCommand extends Command
 {
+    use UsesCoreSource;
+
     public function name(): string
     {
         return 'core:sync';
@@ -35,42 +35,34 @@ final class CoreSyncCommand extends Command
         $updater = new Updater(APP_ROOT);
 
         if ($updater->storedBaseline() === []) {
-            $this->fail('Доверенного состояния ещё нет — сначала: php bin/proton core:check --baseline');
+            $this->fail('Доверенного состояния ещё нет — сначала: php bin/proton core:check --baseline --path=<ядро>');
 
             return 1;
         }
 
-        $path      = $this->option('path', '');
-        $temporary = null;
+        $path = $this->coreSource($updater);
 
-        if ($path === null || $path === '') {
-            if (!$this->hasOption('remote')) {
-                $this->fail('Нужен --path=<каталог> или --remote');
-
-                return 1;
-            }
-
-            try {
-                $path = $temporary = $updater->downloadRemote(
-                    (string) Config::get('core.repo'),
-                    (string) Config::get('core.branch')
-                );
-            } catch (ProtonException $e) {
-                $this->fail($e->getMessage());
-
-                return 1;
-            }
+        if ($path === null) {
+            return 1;
         }
 
+        try {
+            return $this->sync($updater, $path, $this->hasOption('apply'));
+        } finally {
+            $this->releaseCoreSource($updater);
+        }
+    }
+
+    private function sync(Updater $updater, string $path, bool $apply): int
+    {
         $report = $updater->diff($path);
-        $apply  = $this->hasOption('apply');
 
         if (!$apply) {
             $this->line('Только план — для записи добавьте --apply. Что было бы скопировано:');
             $this->printList($report['safe']);
         } else {
             $copied = $updater->copyFiles($path, $report['safe']);
-            $updater->markSynced($copied);
+            $updater->markSynced($path, $report['manual']);
 
             $this->ok('Скопировано файлов: ' . count($copied));
             $this->printList($copied);
@@ -82,6 +74,12 @@ final class CoreSyncCommand extends Command
             $this->printList($report['manual']);
         }
 
+        if ($report['removed'] !== []) {
+            $this->line();
+            $this->line('Ядро больше не содержит (не удалены, решать вам):');
+            $this->printList($report['removed']);
+        }
+
         if ($report['broken'] !== []) {
             $this->line();
             $this->line('Возможно сломается в вашем коде — проверьте после слияния:');
@@ -91,13 +89,18 @@ final class CoreSyncCommand extends Command
             }
         }
 
-        if ($temporary !== null) {
-            $updater->cleanupRemote($temporary);
+        if (!$apply) {
+            return 0;
         }
 
-        if ($apply) {
-            $this->line();
-            $this->line('Дальше: php bin/proton test, затем php bin/proton core:bump, когда список ручного слияния разобран.');
+        $this->line();
+
+        if ($report['manual'] === []) {
+            $this->ok('Версия ядра: ' . $updater->adoptVersion($path));
+            $this->line('Дальше: php bin/proton test');
+        } else {
+            $this->line('Версия осталась ' . $updater->localVersion() . ' — станет ' . $report['version_core']
+                . ', когда core:resolve отметит последний файл из ручного слияния.');
         }
 
         return 0;

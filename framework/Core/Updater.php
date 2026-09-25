@@ -131,12 +131,23 @@ final class Updater
     }
 
     /**
-     * Фиксирует нынешнее состояние framework/ как доверенное — разово, сразу
-     * после того, как проект завели от ядра, или один раз сейчас задним числом.
+     * База — суммы ядра, от которого проект сейчас отсчитывается (общий
+     * предок для трёхсторонней сверки), а не снимок своего framework/. Без
+     * $corePath берётся свой framework/ — верно только пока в нём нет правок:
+     * иначе патч попадёт в базу, станет невидим, и следующая правка этого
+     * файла в ядре затрёт его как «безопасная».
      */
-    public function saveBaseline(): void
+    public function saveBaseline(?string $corePath = null): void
     {
-        $sums = $this->checksums($this->root);
+        $this->writeBaseline($this->checksums($corePath ?? $this->root));
+    }
+
+    /**
+     * @param array<string, string> $sums
+     */
+    private function writeBaseline(array $sums): void
+    {
+        ksort($sums);
 
         file_put_contents(
             $this->root . '/' . self::BASELINE_FILE,
@@ -159,38 +170,92 @@ final class Updater
     }
 
     /**
-     * Обновляет доверенное состояние только для перечисленных файлов — а не
-     * пересчитывает всё дерево заново. Файл из списка «требует ручного
-     * слияния» не копировался и своей старой доверенной суммы лишиться не
-     * должен: пересчёт всего дерева тихо принял бы его текущий (патченный)
-     * вид за новую базу, и следующий диф перестал бы видеть в нём патч —
-     * следующее обновление ядра тогда затёрло бы его как будто «безопасный» файл.
+     * После sync база становится новым ядром — кроме файлов, которые ещё
+     * ждут ручного слияния. У них остаётся старый предок: иначе недомерженный
+     * файл выглядел бы как «ядро его не трогало, это свой патч», и правка
+     * ядра в нём потерялась бы молча. Такой файл переводит на новое ядро
+     * только resolve(), когда слияние сделано.
      *
-     * @param array<int, string> $paths
+     * @param array<int, string> $pending diff()['manual']
      */
-    public function markSynced(array $paths): void
+    public function markSynced(string $corePath, array $pending): void
     {
-        $baseline = $this->storedBaseline();
-        $current  = $this->checksums($this->root);
+        $old   = $this->storedBaseline();
+        $new   = $this->checksums($corePath);
+        $local = $this->checksums($this->root);
 
-        foreach ($paths as $path) {
-            if (isset($current[$path])) {
-                $baseline[$path] = $current[$path];
+        foreach ($pending as $path) {
+            if (isset($old[$path])) {
+                $new[$path] = $old[$path];
+            } else {
+                unset($new[$path]);
             }
         }
 
-        ksort($baseline);
+        // Удалённое ядром, но ещё лежащее у нас, держим в базе — иначе оно
+        // выпадет из списка «ядро больше не содержит» раньше, чем его уберут
+        foreach (array_keys($local) as $path) {
+            if (!isset($new[$path]) && isset($old[$path])) {
+                $new[$path] = $old[$path];
+            }
+        }
 
-        file_put_contents(
-            $this->root . '/' . self::BASELINE_FILE,
-            json_encode($baseline, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n"
-        );
+        $this->writeBaseline($new);
     }
 
     /**
-     * Файлы framework/, изменившиеся с последней сохранённой базы, — без
-     * похода к ядру вообще, чистая локальная проверка «ничего не поправили
-     * в обход правила с последнего раза».
+     * Отмечает файлы из ручного слияния разобранными: предком для них
+     * становится версия ядра. Разница между своим файлом и ядром с этого
+     * момента считается своим патчем, и следующий diff покажет файл снова,
+     * только если ядро поменяет его ещё раз.
+     *
+     * @param array<int, string> $paths "framework/..." или путь внутри framework/
+     *
+     * @return array<int, string> пути, которых нет ни в ядре, ни в базе, — не тронуты
+     */
+    public function resolve(string $corePath, array $paths): array
+    {
+        $baseline = $this->storedBaseline();
+        $core     = $this->checksums($corePath);
+        $unknown  = [];
+
+        foreach ($paths as $path) {
+            $path = str_replace('\\', '/', ltrim($path, './\\'));
+
+            if (!str_starts_with($path, 'framework/')) {
+                $path = 'framework/' . $path;
+            }
+
+            if (isset($core[$path])) {
+                $baseline[$path] = $core[$path];
+            } elseif (isset($baseline[$path])) {
+                unset($baseline[$path]); // ядро файл удалило — решение принято, предка больше нет
+            } else {
+                $unknown[] = $path;
+            }
+        }
+
+        $this->writeBaseline($baseline);
+
+        return $unknown;
+    }
+
+    /**
+     * Ставит себе версию ядра — только когда ручное слияние разобрано
+     * целиком. Иначе версия врала бы: файлы ещё от старого ядра.
+     */
+    public function adoptVersion(string $corePath): string
+    {
+        $version = $this->readVersion($corePath);
+
+        file_put_contents($this->root . '/' . self::VERSION_FILE, $version . "\n");
+
+        return $version;
+    }
+
+    /**
+     * Файлы framework/, отличающиеся от ядра последней синхронизации: свои
+     * патчи и неразобранное ручное слияние. К ядру не ходит — сверка с базой.
      *
      * @return array<int, string>
      */
@@ -210,8 +275,10 @@ final class Updater
     }
 
     /**
-     * Три списка вместо одного диффа: «менялось у ядра» и «менялось у нас» —
-     * два независимых вопроса, а не одна ось.
+     * Трёхсторонняя сверка: база (ядро прошлой синхронизации) — общий предок,
+     * «менялось в ядре» и «менялось у нас» считаются от него независимо.
+     * Файл без предка, который у нас отличается от ядра, уходит в ручное
+     * слияние: откуда он взялся, неизвестно, а затереть его нельзя.
      *
      * @return array{
      *     version_local: string, version_core: string,
@@ -229,29 +296,34 @@ final class Updater
         $manual = [];
 
         foreach ($core as $path => $hash) {
+            $ancestor = $baseline[$path] ?? null;
+
             if (!isset($local[$path])) {
-                $safe[] = $path; // новый файл ядра — своего аналога нет, патчить нечего
+                if ($ancestor === null) {
+                    $safe[] = $path; // новый файл ядра
+                } elseif ($ancestor !== $hash) {
+                    $manual[] = $path; // проект файл удалил, а ядро его с тех пор поменяло
+                }
 
                 continue;
             }
 
-            if ($local[$path] === $hash) {
-                continue; // не изменилось
+            if ($local[$path] === $hash || $ancestor === $hash) {
+                continue; // совпадает с ядром или ядро файл не трогало — свой патч остаётся
             }
 
-            $patchedLocally = isset($baseline[$path]) && $baseline[$path] !== $local[$path];
-
-            if ($patchedLocally) {
-                $manual[] = $path;
-            } else {
+            if ($ancestor === $local[$path]) {
                 $safe[] = $path;
+            } else {
+                $manual[] = $path;
             }
         }
 
+        // Только то, что было в ядре, — свои файлы в framework/ ядро не удаляло
         $removed = [];
 
         foreach ($local as $path => $hash) {
-            if (!isset($core[$path])) {
+            if (!isset($core[$path]) && isset($baseline[$path])) {
                 $removed[] = $path;
             }
         }
@@ -545,30 +617,49 @@ final class Updater
      */
     public function downloadRemote(string $repo, string $branch): string
     {
-        $response = (new HttpClient(30))->get($this->archiveUrl($repo, $branch));
+        $url      = $this->archiveUrl($repo, $branch);
+        $response = (new HttpClient(30))->get($url);
 
         if ($response['status'] !== 200 || $response['body'] === '') {
-            throw new ProtonException('Не удалось скачать архив ядра (код ' . $response['status'] . '): ' . $this->archiveUrl($repo, $branch));
+            throw new ProtonException('Не удалось скачать архив ядра (код ' . $response['status'] . '): ' . $url);
+        }
+
+        // gzip разжимаем сами: PharData на .tar.gz пишет промежуточный файл в
+        // sys_temp_dir, и если того каталога нет (частая история на Windows),
+        // падает с «unable to create temporary file». Голый .tar читается на месте.
+        $tar = @gzdecode($response['body']);
+
+        if ($tar === false) {
+            throw new ProtonException('Архив ядра не разжимается как gzip: ' . $url);
         }
 
         $dir = $this->root . '/var/tmp/core-sync-' . bin2hex(random_bytes(6));
         mkdir($dir, 0777, true);
 
-        $archive = $dir . '/core.tar.gz';
-        file_put_contents($archive, $response['body']);
+        $archive = $dir . '/core.tar';
+        file_put_contents($archive, $tar);
 
-        (new \PharData($archive))->extractTo($dir);
-        unlink($archive);
+        try {
+            (new \PharData($archive))->extractTo($dir);
+        } catch (\Throwable $e) {
+            $this->removeTree($dir);
 
-        // Архив распаковывается в подкаталог вида <repo>-<ветка>/
-        $entries   = array_values(array_diff(scandir($dir) ?: [], ['.', '..']));
-        $extracted = $entries[0] ?? '';
-
-        if ($extracted === '' || !is_dir($dir . '/' . $extracted . '/framework')) {
-            throw new ProtonException('Архив ядра распаковался, но framework/ внутри не нашёлся');
+            throw new ProtonException('Архив ядра не распаковался: ' . $e->getMessage());
         }
 
-        return $dir . '/' . $extracted;
+        unlink($archive);
+
+        // Архив распаковывается в подкаталог вида <repo>-<ветка>/; рядом
+        // может лежать служебный pax_global_header, поэтому ищем по содержимому
+        foreach (array_diff(scandir($dir) ?: [], ['.', '..']) as $entry) {
+            if (is_dir($dir . '/' . $entry . '/framework')) {
+                return $dir . '/' . $entry;
+            }
+        }
+
+        $this->removeTree($dir);
+
+        throw new ProtonException('Архив ядра распаковался, но framework/ внутри не нашёлся');
     }
 
     /**
@@ -584,8 +675,13 @@ final class Updater
             return;
         }
 
+        $this->removeTree($tmp);
+    }
+
+    private function removeTree(string $dir): void
+    {
         $iterator = new RecursiveIteratorIterator(
-            new RecursiveDirectoryIterator($tmp, FilesystemIterator::SKIP_DOTS),
+            new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS),
             RecursiveIteratorIterator::CHILD_FIRST
         );
 
@@ -593,7 +689,7 @@ final class Updater
             $file->isDir() ? rmdir($file->getPathname()) : unlink($file->getPathname());
         }
 
-        rmdir($tmp);
+        rmdir($dir);
     }
 
     private function rawUrl(string $repo, string $branch, string $path): string
@@ -610,12 +706,20 @@ final class Updater
         return "{$repo}/raw/branch/{$branch}/{$path}";
     }
 
-    private function archiveUrl(string $repo, string $branch): string
+    /**
+     * GitHub на github.com/.../archive/... отвечает 302 на codeload, а
+     * HttpClient по редиректам нарочно не ходит — поэтому сразу codeload.
+     */
+    public function archiveUrl(string $repo, string $branch): string
     {
         $repo = rtrim($repo, '/');
 
-        return str_contains($repo, 'github.com')
-            ? "{$repo}/archive/refs/heads/{$branch}.tar.gz"
-            : "{$repo}/archive/{$branch}.tar.gz";
+        if (str_contains($repo, 'github.com')) {
+            $ownerRepo = trim((string) parse_url($repo, PHP_URL_PATH), '/');
+
+            return "https://codeload.github.com/{$ownerRepo}/tar.gz/refs/heads/{$branch}";
+        }
+
+        return "{$repo}/archive/{$branch}.tar.gz";
     }
 }

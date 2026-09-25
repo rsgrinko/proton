@@ -44,7 +44,8 @@ php bin/proton status        # самопроверка: окружение, б�
 **Почта**: `mail:test <адрес> [--queue]` — см. [MAIL.md](MAIL.md).
 
 **Обновление ядра**: `core:version`, `core:bump [patch\|minor\|major] [--note=] [--breaking]`,
-`core:check [--baseline]`, `core:diff`/`core:sync [--apply] (--path=<каталог>\|--remote)`,
+`core:check [--baseline [--path=\|--remote]]`, `core:diff`/`core:sync [--apply] (--path=<каталог>\|--remote)`,
+`core:resolve <файл>... (--path=<каталог>\|--remote)`,
 `core:latest` — подробности в [CORE_UPDATES.md](CORE_UPDATES.md) и [UPDATING.md](UPDATING.md).
 
 ## Раздел целиком

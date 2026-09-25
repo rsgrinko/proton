@@ -3,10 +3,10 @@
 declare(strict_types=1);
 
 /**
- * Core\Updater — контрольные суммы, план обновления (safe/manual/removed),
- * сверка ссылок в клиентском коде и версия. Сценарии повторяют то, что
- * поймало реальный баг на живой симуляции переноса (см. docs/CORE_UPDATES.md):
- * markSynced() не должен тихо принимать недомерженный патч за новую базу.
+ * Core\Updater — контрольные суммы, трёхсторонний план обновления
+ * (safe/manual/removed) от базы-ядра, разбор ручного слияния, сверка ссылок
+ * в клиентском коде, версия и скачивание архива. Сценарии повторяют то, что
+ * ломалось на живой симуляции переноса (см. docs/CORE_UPDATES.md).
  */
 
 use Rsgrinko\Proton\Core\Updater;
@@ -77,6 +77,23 @@ function makeUpdaterFixture(): string
     return $root;
 }
 
+/** Одна запись ustar: заголовок 512 байт и содержимое, добитое до кратного 512 */
+function tarEntry(string $name, string $content): string
+{
+    $header = str_pad($name, 100, "\0")
+        . sprintf("%07o\0", 0644) . sprintf("%07o\0", 0) . sprintf("%07o\0", 0)
+        . sprintf("%011o\0", strlen($content)) . sprintf("%011o\0", 0)
+        . '        ' . '0' . str_repeat("\0", 100)
+        . "ustar\0" . '00';
+    $header = str_pad($header, 512, "\0");
+
+    // Контрольная сумма считается с пробелами на месте своего поля
+    $sum    = array_sum(array_map('ord', str_split($header)));
+    $header = substr_replace($header, sprintf("%06o\0 ", $sum), 148, 8);
+
+    return $header . str_pad($content, (int) ceil(strlen($content) / 512) * 512, "\0");
+}
+
 test('Updater: контрольные суммы не видят разницы в переводе строк', function (): void {
     $root = makeUpdaterFixture();
 
@@ -107,18 +124,53 @@ test('Updater: diff() различает "взять безопасно", "ме�
     $core  = makeUpdaterFixture();
 
     $updater = new Updater($local);
-    $updater->saveBaseline();
+    $updater->saveBaseline($core);
 
     // Ядро поменяло Permission.php — у нас его не трогали, безопасно взять
     file_put_contents($core . '/framework/Access/Permission.php', "<?php\n// новая версия ядра\n");
 
-    // Мы сами поправили Logger.php — считается локальным патчем
+    // Logger.php поменяли и мы, и ядро — только руками
     file_put_contents($local . '/framework/Support/Logger.php', "<?php\n// свой патч\n");
+    file_put_contents($core . '/framework/Support/Logger.php', "<?php\n// правка ядра\n");
 
     $report = $updater->diff($core);
 
     assertSame(['framework/Access/Permission.php'], $report['safe']);
     assertSame(['framework/Support/Logger.php'], $report['manual']);
+    assertSame([], $report['removed']);
+});
+
+test('Updater: свой патч в файле, который ядро не меняло, не требует слияния', function (): void {
+    $local = makeUpdaterFixture();
+    $core  = makeUpdaterFixture();
+
+    $updater = new Updater($local);
+    $updater->saveBaseline($core);
+
+    file_put_contents($local . '/framework/Support/Logger.php', "<?php\n// свой патч\n");
+
+    $report = $updater->diff($core);
+
+    assertSame([], $report['safe']);
+    assertSame([], $report['manual'], 'ядро файл не трогало — сливать нечего');
+    assertSame(['framework/Support/Logger.php'], $updater->check(), 'а check() патч по-прежнему видит');
+});
+
+test('Updater: файл без предка не затирается, свой файл в framework/ не считается удалённым ядром', function (): void {
+    $local = makeUpdaterFixture();
+    $core  = makeUpdaterFixture();
+
+    $updater = new Updater($local);
+    $updater->saveBaseline($core);
+
+    // Своего файла в ядре нет вовсе, а одноимённый с ядром появился у обоих без общего предка
+    file_put_contents($local . '/framework/Support/Own.php', "<?php\n// своё\n");
+    file_put_contents($local . '/framework/Support/Twin.php', "<?php\n// наш вариант\n");
+    file_put_contents($core . '/framework/Support/Twin.php', "<?php\n// вариант ядра\n");
+
+    $report = $updater->diff($core);
+
+    assertSame(['framework/Support/Twin.php'], $report['manual']);
     assertSame([], $report['removed']);
 });
 
@@ -164,31 +216,94 @@ test('Updater: реально пропавший метод/константа �
     assertTrue(isset($report['broken']['Rsgrinko\\Proton\\Access\\Permission::USERS_MANAGE']));
 });
 
-test('Updater: markSynced() не даёт недомерженному патчу тихо стать новой базой', function (): void {
+test('Updater: markSynced() держит недомерженный файл в ручном слиянии, пока его не разобрали', function (): void {
     $local = makeUpdaterFixture();
     $core  = makeUpdaterFixture();
 
     $updater = new Updater($local);
-    $updater->saveBaseline();
+    $updater->saveBaseline($core);
 
-    // Свой патч — Logger.php; ядро в это же время поменяло Permission.php
-    file_put_contents($local . '/framework/Support/Logger.php', "<?php\n// свой патч, не смёрджен\n");
+    // Logger.php поменяли оба; Permission.php — только ядро
+    file_put_contents($local . '/framework/Support/Logger.php', "<?php\n// свой патч, не слит\n");
+    file_put_contents($core . '/framework/Support/Logger.php', "<?php\n// правка ядра\n");
     file_put_contents($core . '/framework/Access/Permission.php', "<?php\n// новая версия ядра\n");
 
     $report = $updater->diff($core);
-    assertSame(['framework/Access/Permission.php'], $report['safe']);
-    assertSame(['framework/Support/Logger.php'], $report['manual']);
+    $updater->copyFiles($core, $report['safe']);
+    $updater->markSynced($core, $report['manual']);
 
-    $copied = $updater->copyFiles($core, $report['safe']);
-    $updater->markSynced($copied);
+    // Если бы база Logger.php стала ядром, файл выглядел бы «своим патчем»,
+    // и правка ядра в нём потерялась бы молча
+    $next = $updater->diff($core);
+    assertSame([], $next['safe'], 'Permission.php уже взят — повторно предлагать нечего');
+    assertSame(['framework/Support/Logger.php'], $next['manual']);
+});
 
-    // Патч в Logger.php должен по-прежнему считаться локальным — иначе
-    // следующее обновление ядра затрёт его как «безопасный» файл
-    assertSame(['framework/Support/Logger.php'], $updater->check());
+test('Updater: resolve() снимает файл с ручного слияния, а новая правка ядра возвращает его', function (): void {
+    $local = makeUpdaterFixture();
+    $core  = makeUpdaterFixture();
 
-    $nextReport = $updater->diff($core);
-    assertSame([], $nextReport['safe'], 'Permission.php уже синхронизирован — повторно предлагать нечего');
-    assertSame(['framework/Support/Logger.php'], $nextReport['manual'], 'Logger.php остаётся локальным патчем');
+    $updater = new Updater($local);
+    $updater->saveBaseline($core);
+
+    file_put_contents($local . '/framework/Support/Logger.php', "<?php\n// свой патч\n");
+    file_put_contents($core . '/framework/Support/Logger.php', "<?php\n// правка ядра\n");
+
+    $report = $updater->diff($core);
+    $updater->markSynced($core, $report['manual']);
+
+    // Слили руками: правка ядра плюс свой патч
+    file_put_contents($local . '/framework/Support/Logger.php', "<?php\n// правка ядра\n// свой патч\n");
+
+    assertSame([], $updater->resolve($core, ['Support/Logger.php']), 'путь внутри framework/ тоже годится');
+    assertSame([], $updater->diff($core)['manual'], 'после resolve файл больше не всплывает');
+    assertSame(['framework/Support/Logger.php'], $updater->check(), 'свой патч остаётся видимым');
+
+    file_put_contents($core . '/framework/Support/Logger.php', "<?php\n// ещё одна правка ядра\n");
+
+    assertSame(['framework/Support/Logger.php'], $updater->diff($core)['manual']);
+    assertSame(['framework/Nope.php'], $updater->resolve($core, ['framework/Nope.php']));
+});
+
+test('Updater: adoptVersion() ставит себе версию ядра', function (): void {
+    $local = makeUpdaterFixture();
+    $core  = makeUpdaterFixture();
+
+    file_put_contents($local . '/framework/VERSION', "1.0.0\n");
+    file_put_contents($core . '/framework/VERSION', "1.2.0\n");
+
+    $updater = new Updater($local);
+
+    assertSame('1.2.0', $updater->adoptVersion($core));
+    assertSame('1.2.0', $updater->localVersion());
+});
+
+test('Updater: архив с GitHub берётся с codeload и распаковывается без sys_temp_dir', function (): void {
+    $root = makeUpdaterFixture();
+
+    // Архив как у GitHub: служебный pax_global_header рядом с <repo>-<ветка>/.
+    // Собран руками: PharData при записи сам лезет в sys_temp_dir
+    $tar = tarEntry('pax_global_header', 'comment=abc')
+        . tarEntry('proton-main/framework/VERSION', "2.0.0\n")
+        . str_repeat("\0", 1024);
+
+    $url = 'https://codeload.github.com/acme/proton/tar.gz/refs/heads/main';
+    HttpClient::fake([$url => ['status' => 200, 'body' => (string) gzencode($tar)]]);
+
+    $updater = new Updater($root);
+
+    try {
+        assertSame($url, $updater->archiveUrl('https://github.com/acme/proton/', 'main'));
+
+        $path = $updater->downloadRemote('https://github.com/acme/proton', 'main');
+
+        assertSame('2.0.0', $updater->readVersion($path));
+
+        $updater->cleanupRemote($path);
+        assertFalse(is_dir(dirname($path)), 'временный каталог убран целиком');
+    } finally {
+        HttpClient::reset();
+    }
 });
 
 test('Updater: nextVersion() считает по правилам семвера со сбросом младших разрядов', function (): void {

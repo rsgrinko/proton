@@ -6,8 +6,6 @@ namespace Rsgrinko\Proton\Console\Commands;
 
 use Rsgrinko\Proton\Console\Command;
 use Rsgrinko\Proton\Core\Updater;
-use Rsgrinko\Proton\Support\Config;
-use Rsgrinko\Proton\Support\ProtonException;
 
 /**
  * что можно взять из ядра, что требует ручного слияния, что ядро больше не
@@ -15,6 +13,8 @@ use Rsgrinko\Proton\Support\ProtonException;
  */
 final class CoreDiffCommand extends Command
 {
+    use UsesCoreSource;
+
     public function name(): string
     {
         return 'core:diff';
@@ -35,37 +35,21 @@ final class CoreDiffCommand extends Command
         $updater = new Updater(APP_ROOT);
 
         if ($updater->storedBaseline() === []) {
-            $this->fail('Доверенного состояния ещё нет — сначала: php bin/proton core:check --baseline');
+            $this->fail('Доверенного состояния ещё нет — сначала: php bin/proton core:check --baseline --path=<ядро>');
 
             return 1;
         }
 
-        $path      = $this->option('path', '');
-        $temporary = null;
+        $path = $this->coreSource($updater);
 
-        if ($path === null || $path === '') {
-            if (!$this->hasOption('remote')) {
-                $this->fail('Нужен --path=<каталог> или --remote');
-
-                return 1;
-            }
-
-            try {
-                $path = $temporary = $updater->downloadRemote(
-                    (string) Config::get('core.repo'),
-                    (string) Config::get('core.branch')
-                );
-            } catch (ProtonException $e) {
-                $this->fail($e->getMessage());
-
-                return 1;
-            }
+        if ($path === null) {
+            return 1;
         }
 
-        $report = $updater->diff($path);
-
-        if ($temporary !== null) {
-            $updater->cleanupRemote($temporary);
+        try {
+            $report = $updater->diff($path);
+        } finally {
+            $this->releaseCoreSource($updater);
         }
 
         $this->printReport($report);
@@ -87,6 +71,10 @@ final class CoreDiffCommand extends Command
         $this->line();
         $this->line('Требуют ручного слияния:');
         $this->printList($report['manual'], 'пусто');
+
+        if ($report['manual'] !== []) {
+            $this->line('  слили руками — php bin/proton core:resolve <файл> с тем же --path/--remote');
+        }
 
         $this->line();
         $this->line('Ядро больше не содержит:');

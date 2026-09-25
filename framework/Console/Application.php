@@ -90,6 +90,7 @@ final class Application
             Commands\CoreCheckCommand::class,
             Commands\CoreDiffCommand::class,
             Commands\CoreSyncCommand::class,
+            Commands\CoreResolveCommand::class,
             Commands\CoreLatestCommand::class,
         ],
     ];
