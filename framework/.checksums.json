@@ -76,7 +76,7 @@
     "framework/Console/Commands/WebhookTestCommand.php": "925abbb8310176cb7102f619adbdb581be761ced2315eb9517019d56d5780881",
     "framework/Console/Commands/WorkerCommand.php": "6dfba8c8aa752a8420bd78a2df425214b8e632f09cd461b0a541f76849dcf94a",
     "framework/Console/Commands/WorkerRestartCommand.php": "b877813d5fe43703e12f11a0ccde3f326d75aa66d44ed70a51e3680e9e2ee266",
-    "framework/Core/Updater.php": "47532d4cef3c2bcf17db2adffc3964b3a402d6974e9349791249a53d7442d77f",
+    "framework/Core/Updater.php": "a4d55bbb7d5916640dba69d755de5264c1a734b7179f41577db65b41d2a2cfeb",
     "framework/Database/Connection.php": "b349a7aa5217c98af77eddac9de7ceeef744af980eda02b989d17837a16bfe4b",
     "framework/Database/DatabaseException.php": "d43ac6cf2a17680cde24923676e0a91dfddefa645cc97c129dd44c64960e41df",
     "framework/Database/Lock.php": "b2b793af798d59b9fcc5bcdd2db09ea9645796e658a0fb6c6000539484283f3e",

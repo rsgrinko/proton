@@ -333,6 +333,21 @@ test('Updater: bump() правит VERSION и дописывает CHANGELOG с�
     );
 });
 
+test('Updater: bump() не ставит запись выше вводного абзаца журнала', function (): void {
+    $root = makeUpdaterFixture();
+    mkdir($root . '/docs', 0777, true);
+
+    file_put_contents($root . '/framework/VERSION', "1.0.0\n");
+    file_put_contents($root . '/docs/CHANGELOG.md', "# Журнал\n\nВводный абзац.\n\n## 1.0.0\n- начало\n");
+
+    (new Updater($root))->bump('minor', 'Новая фича', false);
+
+    assertSame(
+        "# Журнал\n\nВводный абзац.\n\n## 1.1.0\n- Новая фича\n\n## 1.0.0\n- начало\n",
+        (string) file_get_contents($root . '/docs/CHANGELOG.md')
+    );
+});
+
 test('Updater: bump() с --breaking помечает запись явно', function (): void {
     $root = makeUpdaterFixture();
     mkdir($root . '/docs', 0777, true);

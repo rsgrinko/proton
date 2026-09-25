@@ -79,11 +79,12 @@ final class Updater
         $body  = is_file($file) ? (string) file_get_contents($file) : "# Журнал изменений ядра\n\n";
         $entry = "## {$version}\n" . ($breaking ? '- **Ломает:** ' : '- ') . $note . "\n\n";
 
-        // Запись — сразу после заголовка файла, свежее выше старого
-        if (preg_match('/^# .+\n\n/', $body, $m) === 1) {
-            $body = substr_replace($body, $entry, strlen($m[0]), 0);
+        // Запись — перед самой свежей версией, а не сразу под заголовком:
+        // между заголовком и первой версией может стоять вводный абзац
+        if (preg_match('/^## /m', $body, $m, PREG_OFFSET_CAPTURE) === 1) {
+            $body = substr_replace($body, $entry, $m[0][1], 0);
         } else {
-            $body = $entry . $body;
+            $body = rtrim($body) . "\n\n" . $entry;
         }
 
         file_put_contents($file, $body);
