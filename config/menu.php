@@ -21,6 +21,7 @@ return [
     ['key' => 'dashboard', 'label' => 'Панель',       'route' => 'admin.dashboard', 'permission' => Permission::SYSTEM_VIEW, 'group' => 1],
 
     ['key' => 'users',       'label' => 'Пользователи', 'route' => 'admin.users',     'permission' => Permission::USERS_VIEW . '|' . Permission::USERS_MANAGE, 'group' => 2],
+    ['key' => 'invitations', 'label' => 'Приглашения',  'route' => 'admin.invitations', 'permission' => Permission::USERS_MANAGE, 'group' => 2],
     ['key' => 'user-fields', 'label' => 'Поля профиля', 'route' => 'admin.userFields', 'permission' => Permission::USERS_MANAGE, 'group' => 2],
     ['key' => 'roles',       'label' => 'Роли',         'route' => 'admin.roles',     'permission' => Permission::ROLES_VIEW . '|' . Permission::ROLES_MANAGE, 'group' => 2],
     ['key' => 'tokens',      'label' => 'Ключи API',    'route' => 'admin.tokens',    'permission' => Permission::TOKENS_VIEW . '|' . Permission::TOKENS_MANAGE, 'group' => 2],

@@ -31,10 +31,13 @@ final class UsersController extends Controller
     {
         $roles   = $this->roles();
         $filters = $this->listFilters($request, $roles);
+        $page    = $filters->apply(User::query())->paginate($this->page($request), $this->perPage());
+
+        User::preloadAvatars($page['items']);
 
         return $this->view('admin/users', [
             'active'  => 'users',
-            'page'    => $filters->apply(User::query())->paginate($this->page($request), $this->perPage()),
+            'page'    => $page,
             'roles'   => $roles,
             'filters' => $filters,
         ], 'Пользователи');

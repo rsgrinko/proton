@@ -53,6 +53,16 @@ final class User extends Model
 
     private ?bool $superuserCache = null;
 
+    /**
+     * Аватар, подгруженный заранее на весь список (preloadAvatars()). Пока
+     * флаг не стоит, avatarAttachment() ходит в базу: кэшировать на объекте
+     * «с первого вызова» нельзя — после загрузки нового фото тот же объект
+     * отдавал бы старое.
+     */
+    private bool $avatarPreloaded = false;
+
+    private ?Attachment $avatarCache = null;
+
     public function role(): BelongsTo
     {
         return $this->belongsTo(Role::class, 'role_id');
@@ -120,19 +130,58 @@ final class User extends Model
      */
     public function avatarAttachment(): ?Attachment
     {
+        if ($this->avatarPreloaded) {
+            return $this->avatarCache;
+        }
+
         return Attachment::of('avatar', $this->id())[0] ?? null;
     }
 
     /**
-     * Не просто «вложение есть», а «файл правда на диске» — иначе битая
+     * Аватары всего списка одним запросом. Без этого View::avatar() в строке
+     * таблицы ходил в attachments на каждого человека — на странице
+     * пользователей это по SELECT на строку.
+     *
+     *     User::preloadAvatars($page['items']);
+     *
+     * @param array<int, self> $users
+     */
+    public static function preloadAvatars(array $users): void
+    {
+        if ($users === []) {
+            return;
+        }
+
+        $ids    = array_map(static fn (self $user): string => (string) $user->id(), $users);
+        $latest = [];
+
+        // Свежие сверху — первое попавшееся на человека и есть действующее
+        /** @var Attachment $attachment */
+        foreach (Attachment::query()->where('entity', 'avatar')->whereIn('entity_id', $ids)->orderBy('id', 'desc')->get() as $attachment) {
+            $latest[(string) $attachment->raw('entity_id')] ??= $attachment;
+        }
+
+        foreach ($users as $user) {
+            $user->avatarPreloaded = true;
+            $user->avatarCache     = $latest[(string) $user->id()] ?? null;
+        }
+    }
+
+    /**
+     * Действующее фото — только если файл правда на диске: иначе битая
      * ссылка (файл потёрли в обход загрузки) рисуется у всех сломанной
      * картинкой вместо заглушки.
      */
-    public function hasAvatar(): bool
+    public function currentAvatar(): ?Attachment
     {
         $attachment = $this->avatarAttachment();
 
-        return $attachment !== null && Storage::exists((string) $attachment->path);
+        return $attachment !== null && Storage::exists((string) $attachment->path) ? $attachment : null;
+    }
+
+    public function hasAvatar(): bool
+    {
+        return $this->currentAvatar() !== null;
     }
 
     public function emailVerified(): bool

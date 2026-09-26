@@ -77,6 +77,7 @@ final class Settings
             'auth.password_min'      => ['label' => 'Минимальная длина пароля', 'type' => self::INT, 'env' => 'AUTH_PASSWORD_MIN'],
             'auth.sessions_keep_days' => ['label' => 'Дней хранить завершённые сессии', 'type' => self::INT, 'env' => 'AUTH_SESSIONS_KEEP_DAYS'],
             'auth.link_lifetime'     => ['label' => 'Жизнь ссылки подтверждения/сброса, сек', 'type' => self::INT, 'env' => 'AUTH_LINK_LIFETIME'],
+            'auth.invite_days'       => ['label' => 'Дней действует приглашение', 'type' => self::INT, 'env' => 'AUTH_INVITE_DAYS'],
         ],
         'Почта' => [
             'mail.driver' => [

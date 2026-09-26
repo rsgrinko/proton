@@ -346,8 +346,10 @@ final class View
         $class = 'avatar' . ($large ? ' lg' : '');
         $name  = trim((string) ($user->name ?: $user->login));
 
-        if ($user->hasAvatar()) {
-            $attachment = $user->avatarAttachment();
+        // Один поход в attachments, а не два (hasAvatar() и снова avatarAttachment())
+        $attachment = $user->currentAvatar();
+
+        if ($attachment !== null) {
             // Хвост в адресе — от пути файла: заменили фото — изменился путь,
             // изменилась и ссылка, старая копия в кэше браузера не мешает
             $version = substr(md5((string) $attachment->path), 0, 8);

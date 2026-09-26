@@ -21,6 +21,7 @@ $canManage = View::can(Permission::USERS_MANAGE);
     <h1 style="margin: 0;">Пользователи</h1>
     <span class="spacer"></span>
     <?php if ($canManage) { ?>
+        <a class="btn" href="<?= View::e(View::route('admin.invitations')) ?>">Пригласить</a>
         <a class="btn primary" href="<?= View::e(View::route('admin.users.create')) ?>">Новый пользователь</a>
     <?php } ?>
 </div>

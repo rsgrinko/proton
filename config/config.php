@@ -85,6 +85,9 @@ return [
 
         // Сколько живёт ссылка подтверждения и сброса пароля, секунды
         'link_lifetime' => Env::int('AUTH_LINK_LIFETIME', 86400),
+
+        // Сколько дней действует ссылка из приглашения
+        'invite_days' => Env::int('AUTH_INVITE_DAYS', 7),
     ],
 
     'mail' => [

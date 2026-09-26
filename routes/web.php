@@ -17,6 +17,7 @@ declare(strict_types=1);
 use App\Controllers\Web\AuthController;
 use App\Controllers\Web\ExportsController;
 use App\Controllers\Web\HomeController;
+use App\Controllers\Web\InviteController;
 use App\Controllers\Web\InstallController;
 use App\Controllers\Web\NotesController;
 use App\Controllers\Web\NotificationsController;
@@ -46,6 +47,10 @@ return static function (Router $router): void {
 
             $router->get('/register', [RegisterController::class, 'show'])->name('register');
             $router->post('/register', [RegisterController::class, 'store']);
+
+            // Приглашение работает и при закрытой регистрации
+            $router->get('/invite/{token}', [InviteController::class, 'show'])->name('invite');
+            $router->post('/invite/{token}', [InviteController::class, 'store']);
 
             $router->get('/password/forgot', [PasswordController::class, 'showForgot'])->name('password.forgot');
             $router->post('/password/forgot', [PasswordController::class, 'forgot']);

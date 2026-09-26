@@ -13,6 +13,7 @@ declare(strict_types=1);
 use App\Controllers\Admin\AuditController;
 use App\Controllers\Admin\BackupsController;
 use App\Controllers\Admin\DashboardController;
+use App\Controllers\Admin\InvitationsController;
 use App\Controllers\Admin\LogsController;
 use App\Controllers\Admin\QueueController;
 use App\Controllers\Admin\ReportsController;
@@ -68,6 +69,14 @@ return static function (Router $router): void {
         // а вернуться в свою сессию нужно всегда
         $router->post('/impersonate/stop', [UsersController::class, 'stopImpersonating'])
             ->name('admin.impersonate.stop');
+
+        // Приглашать — то же, что заводить пользователя руками: users.manage
+        $router->group(['prefix' => '/invitations', 'middleware' => 'can:' . Permission::USERS_MANAGE], function (Router $router): void {
+            $router->get('', [InvitationsController::class, 'index'])->name('admin.invitations');
+            $router->post('', [InvitationsController::class, 'store'])->name('admin.invitations.store');
+            $router->post('/{id:\d+}/resend', [InvitationsController::class, 'resend'])->name('admin.invitations.resend');
+            $router->post('/{id:\d+}/revoke', [InvitationsController::class, 'revoke'])->name('admin.invitations.revoke');
+        });
 
         $router->group(['prefix' => '/user-fields', 'middleware' => 'can:' . Permission::USERS_MANAGE], function (Router $router): void {
             $router->get('', [UserFieldsController::class, 'index'])->name('admin.userFields');
