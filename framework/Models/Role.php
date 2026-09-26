@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace Rsgrinko\Proton\Models;
 
 use Rsgrinko\Proton\Access\Permission;
+use Rsgrinko\Proton\Access\Viewer;
 use Rsgrinko\Proton\Database\Model\Model;
 use Rsgrinko\Proton\Database\Model\Relations\HasMany;
+use Rsgrinko\Proton\Support\Config;
 
 /**
  * Роль — набор прав под именем. Пользователю выдаётся одна роль, своих галочек
@@ -16,7 +18,9 @@ final class Role extends Model
 {
     protected static string $table = 'roles';
 
-    protected array $fillable = ['name', 'description', 'permissions', 'is_system'];
+    // is_system сюда не входит: встроенность роли — это права администратора,
+    // её ставят миграция и код через forceFill(), а не форма
+    protected array $fillable = ['name', 'description', 'permissions'];
 
     protected array $casts = [
         'permissions' => 'json',
@@ -62,6 +66,74 @@ final class Role extends Model
     {
         /** @var self|null $role */
         $role = self::query()->where('is_system', 1)->first();
+
+        return $role;
+    }
+
+    /**
+     * Роли, которые этот человек вправе выдать: только те, чьи права целиком
+     * есть у него самого (см. Viewer::covers()). Этим списком заполняется
+     * выбор роли в карточке пользователя, и по нему же проверяется присланное.
+     *
+     * @return array<int, self>
+     */
+    public static function assignableBy(Viewer $viewer): array
+    {
+        /** @var array<int, self> $roles */
+        $roles = self::query()->orderBy('id')->get();
+
+        return array_values(array_filter(
+            $roles,
+            static fn (self $role): bool => $viewer->covers($role->permissions())
+        ));
+    }
+
+    /**
+     * Роль для тех, кто зарегистрировался сам (настройка AUTH_REGISTRATION_ROLE),
+     * или null, если выдавать нечего — тогда регистрация закрыта.
+     *
+     * Роль называется явно, а не «первая невстроенная»: иначе стоило удалить
+     * «Пользователя», и новички получали бы следующую по порядку — хоть с
+     * users.manage. По той же причине роль с правами на управление сервисом
+     * (всё, чего нет в Permission::user()) не выдаётся вовсе.
+     */
+    public static function forRegistration(): ?self
+    {
+        return self::registrationProblem() === '' ? self::registrationRole() : null;
+    }
+
+    /**
+     * Что не так с ролью для регистрации; пусто — всё в порядке. Нужна
+     * состоянию сервиса и логу: закрытая регистрация без причины выглядит
+     * поломкой.
+     */
+    public static function registrationProblem(): string
+    {
+        $name = trim((string) Config::get('auth.registration_role', ''));
+
+        if ($name === '') {
+            return 'не задана AUTH_REGISTRATION_ROLE';
+        }
+
+        $role = self::registrationRole();
+
+        if ($role === null) {
+            return 'роли «' . $name . '» нет';
+        }
+
+        $extra = array_diff($role->permissions(), Permission::user());
+
+        if ($role->isSystem() || $extra !== []) {
+            return 'у роли «' . $name . '» права на управление: ' . implode(', ', $role->isSystem() ? ['все'] : $extra);
+        }
+
+        return '';
+    }
+
+    private static function registrationRole(): ?self
+    {
+        /** @var self|null $role */
+        $role = self::query()->where('name', trim((string) Config::get('auth.registration_role', '')))->first();
 
         return $role;
     }

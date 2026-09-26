@@ -151,6 +151,15 @@ final class ApiToken extends Model
      */
     public function markUsed(string $ip): void
     {
+        // Дата нужна, чтобы видеть забытые ключи, — хватит точности до минуты.
+        // Писать в базу на каждый вызов API незачем: интеграция, которая ходит
+        // десять раз в секунду, иначе держала бы таблицу под записью
+        $last = strtotime((string) $this->raw('last_used_at'));
+
+        if ($last !== false && time() - $last < 60 && (string) $this->raw('last_used_ip') === $ip) {
+            return;
+        }
+
         $this->forceFill(['last_used_at' => Connection::now(), 'last_used_ip' => $ip])->save();
     }
 

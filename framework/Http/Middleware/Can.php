@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Rsgrinko\Proton\Http\Middleware;
 
+use Rsgrinko\Proton\Access\Viewer;
 use Rsgrinko\Proton\Auth\Auth;
 use Rsgrinko\Proton\Http\Request;
 use Rsgrinko\Proton\Http\Response;
@@ -15,12 +16,22 @@ use Rsgrinko\Proton\View\View;
  *
  * Ставится прослойкой у группы маршрутов, а не проверкой в контроллере: так
  * забыть её можно только вместе со всей группой.
+ *
+ * Права берутся у того viewer, которого положила прослойка раньше: `auth` —
+ * вошедший по сессии, `api` — владелец ключа с урезанными abilities. Сессию
+ * спрашиваем, только если viewer в запросе нет. Иначе на API-маршруте проверялся
+ * бы браузер (гость — вечный 403, или чужая кука пропускала бы запрос мимо
+ * скоупа ключа), поэтому `can:` там стоит после `api`, а не до.
  */
 final class Can
 {
     public function __invoke(Request $request, callable $next, string $permission = ''): Response
     {
-        $viewer = Auth::viewer();
+        $viewer = $request->attribute('viewer');
+
+        if (!$viewer instanceof Viewer) {
+            $viewer = Auth::viewer();
+        }
 
         $permissions = array_values(array_filter(explode('|', $permission)));
 

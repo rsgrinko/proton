@@ -238,7 +238,10 @@ final class Validator
                 break;
 
             case 'url':
-                if (filter_var($text, FILTER_VALIDATE_URL) === false) {
+                // Только http и https: FILTER_VALIDATE_URL сам по себе пропускает
+                // file://localhost/etc/passwd и gopher://, а адрес из формы потом
+                // уходит в HttpClient (вебхуки) — это чтение файлов сервера
+                if (filter_var($text, FILTER_VALIDATE_URL) === false || !HttpClient::allowedScheme($text)) {
                     $this->fail($field, 'Поле «' . $label . '» должно быть ссылкой');
                 }
 

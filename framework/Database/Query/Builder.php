@@ -27,6 +27,9 @@ use Rsgrinko\Proton\Database\DatabaseException;
  */
 class Builder
 {
+    /** Сколько вариантов запроса держать под одним своим ключом remember() */
+    private const REMEMBER_VARIANTS = 50;
+
     protected Connection $db;
 
     protected string $table;
@@ -354,7 +357,9 @@ class Builder
      * В самом кэше ключ лежит с суффиксом метода — `query:<key>:get`,
      * `query:<key>:count:колонка` и т.д., иначе `get()` и `count()` одного
      * запроса стали бы одной записью в кэше. Сбрасывая свой ключ вручную,
-     * суффикс нужно дописать тем же способом.
+     * суффикс нужно дописать тем же способом. Под своим ключом живут все
+     * варианты запроса (страницы paginate(), first() рядом с get()) — forget()
+     * сбрасывает их разом.
      */
     public function remember(int $seconds, ?string $key = null): static
     {
@@ -707,20 +712,55 @@ class Builder
             return $factory();
         }
 
-        return Cache::remember($this->cacheKey() . ':' . $suffix, $this->rememberSeconds, $factory);
-    }
+        // Отпечаток самого запроса — по $this в его текущем состоянии, то есть
+        // с limit/offset: страницы одного запроса — разные записи
+        $variant = md5($this->toSql() . serialize($this->bindings));
+        $seconds = max(1, $this->rememberSeconds);
 
-    /**
-     * Свой ключ или ключ от текста запроса — считается по $this в его текущем
-     * состоянии, поэтому вызывать до клонирования и правки where()/select().
-     */
-    private function cacheKey(): string
-    {
-        if ($this->rememberKey !== null) {
-            return 'query:' . $this->rememberKey;
+        // Значение лежит обёрнутым: пустой ответ (first() без строк) иначе
+        // не отличить от промаха, и он шёл бы в базу каждый раз
+        if ($this->rememberKey === null) {
+            $key = 'query:' . $variant . ':' . $suffix;
+            $hit = Cache::get($key);
+
+            if (is_array($hit) && array_key_exists('v', $hit)) {
+                return $hit['v'];
+            }
+
+            $value = $factory();
+
+            Cache::put($key, ['v' => $value], $seconds);
+
+            return $value;
         }
 
-        return 'query:' . md5($this->toSql() . serialize($this->bindings));
+        // Свой ключ — одна запись на все варианты запроса под ним. Раньше ключ
+        // не учитывал сам запрос, и paginate() отдавал первую страницу на любой
+        // номер. Теперь варианты лежат словарём внутри записи, а Cache::forget()
+        // по ключу (как и прежде, 'query:<key>:get') сбрасывает их все разом
+        $key = 'query:' . $this->rememberKey . ':' . $suffix;
+        $map = Cache::get($key);
+        $map = is_array($map) ? $map : [];
+        $hit = $map[$variant] ?? null;
+
+        if (is_array($hit) && array_key_exists('v', $hit) && (int) ($hit['until'] ?? 0) >= time()) {
+            return $hit['v'];
+        }
+
+        $value = $factory();
+
+        unset($map[$variant]);
+
+        $map[$variant] = ['v' => $value, 'until' => time() + $seconds];
+
+        // Страниц у большого списка много — держим последние, а не все подряд
+        if (count($map) > self::REMEMBER_VARIANTS) {
+            $map = array_slice($map, -self::REMEMBER_VARIANTS, null, true);
+        }
+
+        Cache::put($key, $map, $seconds);
+
+        return $value;
     }
 
     /**

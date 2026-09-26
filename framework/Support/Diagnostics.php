@@ -10,11 +10,13 @@ use Rsgrinko\Proton\Core\Updater;
 use Rsgrinko\Proton\Database\Connection;
 use Rsgrinko\Proton\Database\Migrator;
 use Rsgrinko\Proton\Files\Storage;
+use Rsgrinko\Proton\Models\Role;
 use Rsgrinko\Proton\Models\Setting;
 use Rsgrinko\Proton\Models\User;
 use Rsgrinko\Proton\Models\Webhook;
 use Rsgrinko\Proton\Models\WebhookDelivery;
 use Rsgrinko\Proton\Queue\Queue;
+use Rsgrinko\Proton\Webhooks\Incoming;
 use Throwable;
 
 /**
@@ -255,10 +257,53 @@ final class Diagnostics
             'hint'  => '',
         ];
 
+        if ((bool) Config::get('auth.registration', true)) {
+            try {
+                $problem = Role::registrationProblem();
+
+                $checks[] = self::check(
+                    $problem === '',
+                    'Роль при регистрации',
+                    $problem === '' ? (string) Config::get('auth.registration_role', '') : $problem,
+                    'Регистрация закрыта, пока роль не поправят: AUTH_REGISTRATION_ROLE — имя роли без прав на управление',
+                    self::WARN
+                );
+            } catch (Throwable $e) {
+                $checks[] = ['level' => self::WARN, 'title' => 'Роль при регистрации', 'value' => $e->getMessage(), 'hint' => ''];
+            }
+        }
+
         $checks[] = self::webhooks();
+        $checks[] = self::incoming();
         $checks[] = self::backups();
 
         return $checks;
+    }
+
+    /**
+     * Входящие источники без токена принимают посылку от кого угодно — так
+     * задумано для систем, которые ничего не умеют слать, но держать это
+     * нужно на виду: забытый пустой токен выглядит точно так же.
+     *
+     * @return array{level: string, title: string, value: string, hint: string}
+     */
+    private static function incoming(): array
+    {
+        $open = [];
+
+        foreach (Incoming::sources() as $key => $source) {
+            if ($source['token'] === '') {
+                $open[] = $key;
+            }
+        }
+
+        return self::check(
+            $open === [],
+            'Входящие вебхуки',
+            $open === [] ? 'источников ' . count(Incoming::sources()) . ', все с токеном' : 'без токена: ' . implode(', ', $open),
+            'Эти адреса принимают посылку от любого — если это не нарочно, задайте токен в config/incoming.php',
+            self::WARN
+        );
     }
 
     /**

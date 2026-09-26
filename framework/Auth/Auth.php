@@ -14,6 +14,7 @@ use Rsgrinko\Proton\Models\UserSession;
 use Rsgrinko\Proton\RateLimit\RateLimiter;
 use Rsgrinko\Proton\Support\ClientIp;
 use Rsgrinko\Proton\Support\Config;
+use Rsgrinko\Proton\Support\IpAllowlist;
 
 /**
  * Авторизация: сессия, текущий пользователь, «запомнить меня» и защита от подбора.
@@ -33,6 +34,9 @@ final class Auth
 
     /** Ключ id того, за кого сейчас смотрят — «войти под пользователем» из панели */
     private const IMPERSONATE_KEY = 'auth_impersonate';
+
+    /** Как часто, секунд, отмечать в описи устройств «был здесь» */
+    private const TOUCH_EVERY = 60;
 
     /** @var User|null|false false — ещё не смотрели. Эффективный пользователь: во время
      *  подмены это тот, за кого смотрят, а не тот, кто нажал «войти под пользователем» */
@@ -180,10 +184,15 @@ final class Auth
 
         $_SESSION[self::SESSION_KEY]['seen'] = time();
 
-        $sid = (string) ($_SESSION[self::SESSION_KEY]['sid'] ?? '');
+        $sid     = (string) ($_SESSION[self::SESSION_KEY]['sid'] ?? '');
+        $touched = (int) ($_SESSION[self::SESSION_KEY]['touched'] ?? 0);
 
-        if ($sid !== '') {
+        // Опись устройств нужна с точностью до минуты, а не до запроса: запись
+        // в базу на каждую страницу — это блокировка SQLite на ровном месте
+        if ($sid !== '' && time() - $touched >= self::TOUCH_EVERY) {
             UserSession::touch($sid, self::ip());
+
+            $_SESSION[self::SESSION_KEY]['touched'] = time();
         }
 
         return $user;
@@ -232,6 +241,12 @@ final class Auth
         }
 
         $user = User::findByCredential($credential);
+
+        // Нет такого — всё равно считаем хеш: иначе по времени ответа видно,
+        // какие логины существуют (password_verify — самое долгое место входа)
+        if ($user === null) {
+            Password::verify($password, self::dummyHash());
+        }
 
         if ($user === null || !$user->verifyPassword($password) || !$user->isActive()) {
             $limiter->hit($key, time() + $window);
@@ -322,6 +337,10 @@ final class Auth
             $_SESSION[self::SESSION_KEY]['remember'] = $selector;
 
             self::$pendingCookie = ['value' => $cookie, 'expires' => time() + $days * 86400];
+
+            // Кука токена форм подписана вместе с селектором долгой куки
+            // (см. Csrf) — селектор только что сменился, переподписываем
+            Csrf::restore(Csrf::token());
         }
 
         // Опись устройств ведём для всех сессий, а не только для «запомнить меня»:
@@ -497,6 +516,20 @@ final class Auth
     }
 
     /**
+     * Селектор долгой куки, с которой уйдёт этот ответ: только что выданной
+     * или погашенной (тогда пусто), а если её не трогали — пришедшей от браузера.
+     * К нему Csrf привязывает подпись своей куки.
+     */
+    public static function rememberSelector(): string
+    {
+        if (self::$pendingCookie !== null) {
+            return RememberToken::selectorOf(self::$pendingCookie['value']);
+        }
+
+        return RememberToken::selectorOf(self::rememberCookie());
+    }
+
+    /**
      * Имя текущего сеанса в описи устройств.
      */
     public static function currentSession(): string
@@ -513,6 +546,21 @@ final class Auth
     {
         if (($_SERVER['HTTPS'] ?? '') !== '' && strtolower((string) $_SERVER['HTTPS']) !== 'off') {
             return true;
+        }
+
+        // Приложение живёт на https — куки Secure всегда, как бы ни был
+        // устроен прокси перед ним
+        if (str_starts_with(strtolower((string) Config::get('app.url', '')), 'https://')) {
+            return true;
+        }
+
+        // Заголовок прокси — только от своего прокси (TRUSTED_PROXIES):
+        // остальные пришлют что угодно
+        $trusted = (string) Config::get('app.trusted_proxies', '');
+        $remote  = ClientIp::normalize((string) ($_SERVER['REMOTE_ADDR'] ?? ''));
+
+        if ($trusted === '' || !IpAllowlist::allows($trusted, $remote)) {
+            return false;
         }
 
         return strtolower((string) ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '')) === 'https';
@@ -653,6 +701,16 @@ final class Auth
         unset($_COOKIE[self::rememberCookieName()]);
 
         self::$pendingCookie = ['value' => '', 'expires' => time() - 86400];
+    }
+
+    /**
+     * Хеш для сверки впустую — той же стоимости, что и настоящие.
+     */
+    private static function dummyHash(): string
+    {
+        static $hash = null;
+
+        return $hash ??= Password::hash(bin2hex(random_bytes(8)));
     }
 
     /**

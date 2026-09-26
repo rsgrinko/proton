@@ -144,7 +144,7 @@ test('логи: запись пишется одной строкой и раз�
 });
 
 test('файлы: хранилище принимает файл и не пускает за свои пределы', function (): void {
-    $temp = (string) tempnam(sys_get_temp_dir(), 'proton');
+    $temp = (string) tempnam((string) \Rsgrinko\Proton\Support\Config::get('paths.tmp', APP_ROOT . '/var/tmp'), 'proton');
 
     file_put_contents($temp, 'содержимое файла');
 
@@ -162,7 +162,7 @@ test('файлы: хранилище принимает файл и не пус�
 });
 
 test('файлы: запрещённое расширение не принимается', function (): void {
-    $temp = (string) tempnam(sys_get_temp_dir(), 'proton');
+    $temp = (string) tempnam((string) \Rsgrinko\Proton\Support\Config::get('paths.tmp', APP_ROOT . '/var/tmp'), 'proton');
 
     file_put_contents($temp, '<?php echo "привет"; ?>');
 

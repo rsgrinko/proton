@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Controllers\Admin;
 
+use Rsgrinko\Proton\Access\AccessDenied;
 use Rsgrinko\Proton\Access\Permission;
+use Rsgrinko\Proton\Access\Viewer;
 use Rsgrinko\Proton\Http\Controller;
 use Rsgrinko\Proton\Http\Request;
 use Rsgrinko\Proton\Http\Response;
@@ -39,19 +41,23 @@ final class RolesController extends Controller
         ], 'Новая роль');
     }
 
-    public function store(Request $request): Response
+    public function store(Request $request, Viewer $viewer): Response
     {
         $data = $this->validate($request, [
             'name'        => 'required|max:100|unique:roles,name',
             'description' => 'nullable|max:255',
         ], ['name' => 'Название', 'description' => 'Описание']);
 
+        $permissions = Permission::filter((array) $request->input('permissions', []));
+
+        $this->assertGrantable($viewer, $permissions);
+
         $role = new Role();
 
         $role->forceFill([
             'name'        => (string) $data['name'],
             'description' => (string) ($data['description'] ?? ''),
-            'permissions' => Permission::filter((array) $request->input('permissions', [])),
+            'permissions' => $permissions,
             'is_system'   => 0,
         ])->save();
 
@@ -74,10 +80,13 @@ final class RolesController extends Controller
         ], (string) $role->name);
     }
 
-    public function update(Request $request, int $id): Response
+    public function update(Request $request, int $id, Viewer $viewer): Response
     {
         /** @var Role $role */
         $role = $this->require(Role::find($id), 'admin.roles', 'Роль не найдена');
+
+        // И то, что в роли уже есть, и то, что в неё просят положить
+        $this->assertGrantable($viewer, $role->permissions());
 
         $data = $this->validate($request, [
             'name'        => 'required|max:100|unique:roles,name,' . $role->id(),
@@ -94,7 +103,11 @@ final class RolesController extends Controller
         // У встроенной роли права берутся из кода — форма их не показывает
         // и не меняет
         if (!$role->isSystem()) {
-            $role->setAttribute('permissions', Permission::filter((array) $request->input('permissions', [])));
+            $permissions = Permission::filter((array) $request->input('permissions', []));
+
+            $this->assertGrantable($viewer, $permissions);
+
+            $role->setAttribute('permissions', $permissions);
         }
 
         $role->save();
@@ -109,10 +122,12 @@ final class RolesController extends Controller
         return $this->redirect('admin.roles.show', ['id' => $role->id()]);
     }
 
-    public function delete(int $id): Response
+    public function delete(int $id, Viewer $viewer): Response
     {
         /** @var Role $role */
         $role = $this->require(Role::find($id), 'admin.roles', 'Роль не найдена');
+
+        $this->assertGrantable($viewer, $role->permissions());
 
         if ($role->isSystem()) {
             $this->flash('Встроенную роль удалить нельзя', 'error');
@@ -135,5 +150,20 @@ final class RolesController extends Controller
         $this->flash('Роль удалена');
 
         return $this->redirect('admin.roles');
+    }
+
+    /**
+     * Раздавать можно только свои права: иначе roles.manage дописал бы своей
+     * роли что угодно и стал администратором. См. Viewer::covers().
+     *
+     * @param array<int, string> $permissions
+     */
+    private function assertGrantable(Viewer $viewer, array $permissions): void
+    {
+        if (!$viewer->covers($permissions)) {
+            $missing = array_values(array_diff($permissions, $viewer->permissions()));
+
+            throw new AccessDenied('Нельзя выдавать права, которых нет у вас самих: ' . implode(', ', $missing));
+        }
     }
 }

@@ -40,6 +40,8 @@ use Rsgrinko\Proton\Support\Str;
  *
  * Массовое присвоение работает по «белому списку» $fillable: без него форма,
  * в которую дописали лишнее поле, меняла бы что угодно, вплоть до role_id.
+ * Пустой список значит «ничего», а не «всё»: модель, которой список забыли
+ * заполнить, молча не примет лишнего, а не откроет все колонки разом.
  */
 abstract class Model implements JsonSerializable
 {
@@ -59,7 +61,7 @@ abstract class Model implements JsonSerializable
     /** Мягкое удаление: запись остаётся, но помечается deleted_at */
     protected bool $softDelete = false;
 
-    /** @var array<int, string> Поля, которые можно заполнять массово */
+    /** @var array<int, string> Поля, которые можно заполнять массово; пусто — никакие */
     protected array $fillable = [];
 
     /** @var array<int, string> Поля, которые нельзя показывать наружу (toArray, JSON) */
@@ -278,14 +280,15 @@ abstract class Model implements JsonSerializable
     // --- Запись --------------------------------------------------------------
 
     /**
-     * Заполняет разрешённые поля.
+     * Заполняет разрешённые поля. Всё, чего нет в $fillable, молча
+     * отбрасывается — в том числе у модели с пустым списком.
      *
      * @param array<string, mixed> $attributes
      */
     public function fill(array $attributes): static
     {
         foreach ($attributes as $key => $value) {
-            if ($this->fillable === [] || in_array($key, $this->fillable, true)) {
+            if (in_array($key, $this->fillable, true)) {
                 $this->setAttribute((string) $key, $value);
             }
         }

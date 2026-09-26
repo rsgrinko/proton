@@ -14,9 +14,11 @@ use Rsgrinko\Proton\Access\Permission;
 use Rsgrinko\Proton\Auth\Auth;
 use Rsgrinko\Proton\Auth\Csrf;
 use Rsgrinko\Proton\Comments\Comment;
+use Rsgrinko\Proton\Database\Connection;
 use Rsgrinko\Proton\Http\Kernel;
 use Rsgrinko\Proton\Http\Request;
 use Rsgrinko\Proton\Http\Response;
+use Rsgrinko\Proton\Install\Installer;
 use Rsgrinko\Proton\Models\ApiToken;
 use Rsgrinko\Proton\Models\Role;
 use Rsgrinko\Proton\Models\User;
@@ -24,6 +26,7 @@ use Rsgrinko\Proton\Models\UserNotification;
 use Rsgrinko\Proton\Models\IncomingHook;
 use Rsgrinko\Proton\Models\Webhook;
 use Rsgrinko\Proton\Models\WebhookDelivery;
+use Rsgrinko\Proton\Support\ProtonException;
 use Rsgrinko\Proton\Support\Settings;
 use Rsgrinko\Proton\Webhooks\Incoming;
 
@@ -159,6 +162,39 @@ test('http: установленное приложение установщик
 
     assertStatus(302, $response, 'мастером не должен воспользоваться прохожий');
     assertContains('/', $response->header('Location'));
+});
+
+test('http: упавшая база не открывает установщик', function (): void {
+    httpAdmin();
+
+    $previous = Connection::instance();
+
+    // Подключение пересоберётся на каталог вместо файла базы — так же, как при
+    // недоступном MySQL, instance() бросит исключение
+    Connection::setInstance(null);
+
+    try {
+        withConfig(['db.driver' => 'sqlite', 'db.sqlite.path' => APP_ROOT, 'security.blocklist' => false], static function (): void {
+            $error = assertThrows(static fn () => Installer::installed());
+
+            assertTrue($error instanceof ProtonException && $error->getCode() === 503, 'ждали 503 от installed()');
+
+            $page = (new Kernel())->handle(Request::create('GET', '/install'));
+
+            assertStatus(503, $page, 'мастер не должен открыться, пока база лежит');
+
+            $post = (new Kernel())->handle(Request::create('POST', '/install', [
+                'app_name'  => 'Чужой',
+                'db_driver' => 'mysql',
+                'db_host'   => 'attacker.example',
+                Csrf::FIELD => Csrf::token(),
+            ], [], ['Accept' => 'application/json']));
+
+            assertStatus(503, $post);
+        });
+    } finally {
+        Connection::setInstance($previous);
+    }
 });
 
 test('http: вошедшему форма входа не нужна', function (): void {
@@ -627,6 +663,31 @@ test('api: скоуп ключа урезает право владельца, �
     ]), 'но у владельца его нет, поэтому ключ его тоже не получает');
 });
 
+test('api: ключ только на чтение заметки не пишет', function (): void {
+    $reader  = ApiToken::issue('читатель', httpAdmin()->id(), '', 0, 'notes.view');
+    $headers = ['authorization' => 'Bearer ' . $reader['key']];
+
+    $note = Note::create(['title' => 'Не трогать через API']);
+
+    $note->forceFill(['user_id' => httpAdmin()->id()])->save();
+
+    assertStatus(200, httpRequest('GET', '/api/v1/notes/' . $note->id(), null, [], [], $headers));
+    assertStatus(403, httpRequest('POST', '/api/v1/notes', null, ['title' => 'Лишняя'], [], $headers));
+    assertStatus(403, httpRequest('PATCH', '/api/v1/notes/' . $note->id(), null, ['title' => 'Чужая правка'], [], $headers));
+    assertStatus(403, httpRequest('DELETE', '/api/v1/notes/' . $note->id(), null, [], [], $headers));
+
+    assertSame('Не трогать через API', (string) Note::find($note->id())?->title, 'заметка не должна измениться');
+});
+
+test('api: сессия администратора не расширяет права ключа', function (): void {
+    // Браузер с живой сессией админа шлёт запрос ключом скромного владельца —
+    // can: должен смотреть на ключ, а не на куку
+    $reader  = ApiToken::issue('читатель при сессии', httpAdmin()->id(), '', 0, 'notes.view');
+    $headers = ['authorization' => 'Bearer ' . $reader['key']];
+
+    assertStatus(403, httpRequest('POST', '/api/v1/notes', httpAdmin(), ['title' => 'Через сессию'], [], $headers));
+});
+
 test('api: здоровье отвечает без ключа и разбито по зависимостям', function (): void {
     $response = httpRequest('GET', '/api/v1/health');
 
@@ -676,4 +737,17 @@ test('права: реестр знает и свои права приложе�
 
     assertTrue(in_array('notes.view', Permission::user(), true), 'обычному пользователю раздел доступен');
     assertFalse(in_array(Permission::DATA_ALL, Permission::user(), true), 'чужие данные — нет');
+});
+
+test('http: форма с ошибкой возвращается по пути из Referer, а не на чужой сайт', function (): void {
+    $response = httpRequest('POST', '/admin/users/new', httpAdmin(), ['login' => ''], [], [
+        'referer' => 'https://evil.example/admin/users/new?from=list',
+    ]);
+
+    assertStatus(302, $response);
+    assertSame('/admin/users/new?from=list', $response->header('Location'), 'домен из Referer отброшен');
+
+    $bare = httpRequest('POST', '/admin/users/new', httpAdmin(), ['login' => ''], [], ['referer' => 'https://evil.example']);
+
+    assertSame('/admin/users/new', $bare->header('Location'), 'без пути — назад на сам адрес формы');
 });

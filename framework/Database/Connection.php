@@ -25,6 +25,9 @@ final class Connection
     public const SQLITE = 'sqlite';
     public const MYSQL  = 'mysql';
 
+    /** Код исключения «база не отвечает» — ядро отдаёт по нему 503 */
+    public const UNAVAILABLE = 503;
+
     private static ?self $instance = null;
 
     private PDO $pdo;
@@ -473,7 +476,9 @@ final class Connection
                 PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
             ]);
         } catch (PDOException $e) {
-            throw new DatabaseException('Не удалось открыть базу SQLite: ' . $e->getMessage(), [], 0, $e);
+            // 503, а не 500: база не открылась — это авария на время, ядро
+            // отвечает «зайдите позже», а не страницей поломки
+            throw new DatabaseException('Не удалось открыть базу SQLite: ' . $e->getMessage(), [], self::UNAVAILABLE, $e);
         }
 
         // WAL даёт нормальную параллельную работу воркера и веб-части
@@ -504,7 +509,7 @@ final class Connection
                 PDO::ATTR_EMULATE_PREPARES   => false,
             ]);
         } catch (PDOException $e) {
-            throw new DatabaseException('Не удалось подключиться к MySQL: ' . $e->getMessage(), [], 0, $e);
+            throw new DatabaseException('Не удалось подключиться к MySQL: ' . $e->getMessage(), [], self::UNAVAILABLE, $e);
         }
     }
 

@@ -542,11 +542,11 @@ HTML;
             $this->line('');
             $this->line('4. Маршруты API — routes/api.php, внутрь группы с \'api\':');
             $this->line('');
-            $this->line('    $router->get(\'/' . $route . '\', [' . $class . '::class, \'index\'])->name(\'api.' . $route . '.index\');');
-            $this->line('    $router->post(\'/' . $route . '\', [' . $class . '::class, \'store\'])->name(\'api.' . $route . '.store\');');
-            $this->line('    $router->get(\'/' . $route . '/{id:\d+}\', [' . $class . '::class, \'show\'])->name(\'api.' . $route . '.show\');');
-            $this->line('    $router->patch(\'/' . $route . '/{id:\d+}\', [' . $class . '::class, \'update\'])->name(\'api.' . $route . '.update\');');
-            $this->line('    $router->delete(\'/' . $route . '/{id:\d+}\', [' . $class . '::class, \'delete\'])->name(\'api.' . $route . '.delete\');');
+            $this->line('    $router->get(\'/' . $route . '\', [' . $class . '::class, \'index\'])->middleware(\'can:' . $route . '.view\')->name(\'api.' . $route . '.index\');');
+            $this->line('    $router->post(\'/' . $route . '\', [' . $class . '::class, \'store\'])->middleware(\'can:' . $route . '.manage\')->name(\'api.' . $route . '.store\');');
+            $this->line('    $router->get(\'/' . $route . '/{id:\d+}\', [' . $class . '::class, \'show\'])->middleware(\'can:' . $route . '.view\')->name(\'api.' . $route . '.show\');');
+            $this->line('    $router->patch(\'/' . $route . '/{id:\d+}\', [' . $class . '::class, \'update\'])->middleware(\'can:' . $route . '.manage\')->name(\'api.' . $route . '.update\');');
+            $this->line('    $router->delete(\'/' . $route . '/{id:\d+}\', [' . $class . '::class, \'delete\'])->middleware(\'can:' . $route . '.manage\')->name(\'api.' . $route . '.delete\');');
             $this->line('');
             $this->line('    use App\Controllers\Api\\' . $class . '; — вверху файла');
         }

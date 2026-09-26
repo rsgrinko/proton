@@ -302,8 +302,11 @@ final class Router
      */
     private function run(Route $route, Request $request, array $params): Response
     {
-        $label    = 'обработчик: ' . $this->handlerLabel($route->handler);
-        $location = $this->handlerLocation($route->handler);
+        // Подписи для панели отладки собираются рефлексией — на бою, где
+        // панели нет, это пустая работа на каждый запрос
+        $profiling = Profiler::enabled();
+        $label     = $profiling ? 'обработчик: ' . $this->handlerLabel($route->handler) : '';
+        $location  = $profiling ? $this->handlerLocation($route->handler) : '';
 
         $next = function (Request $request) use ($route, $params, $label, $location): Response {
             Profiler::mark($label . ' →', $location);
@@ -325,7 +328,7 @@ final class Router
             $handler        = $this->middleware[$name];
             $inner          = $next;
             $middleware     = 'прослойка: ' . $name . ($argument !== '' ? ':' . $argument : '');
-            $middlewareFile = $this->handlerLocation($handler);
+            $middlewareFile = $profiling ? $this->handlerLocation($handler) : '';
             $next           = static function (Request $request) use ($handler, $inner, $argument, $middleware, $middlewareFile): Response {
                 Profiler::mark($middleware . ' →', $middlewareFile);
                 $response = $argument === '' ? $handler($request, $inner) : $handler($request, $inner, $argument);

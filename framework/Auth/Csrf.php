@@ -21,6 +21,12 @@ use Rsgrinko\Proton\Support\Config;
  * дублируется в свою куку, подписанную APP_KEY: сессия поднялась пустой — токен
  * возвращается из куки. Подпись обязательна: без неё свой токен браузеру
  * подсунул бы любой, кто умеет ставить куки на домен.
+ *
+ * Одной подписи ключом приложения мало: годную подписанную куку любой получит,
+ * просто зайдя на сайт, и подбросит её чужому браузеру. Поэтому подписывается
+ * пара «токен | селектор долгой куки» (Auth::rememberSelector()): восстановить
+ * токен из куки можно только в том браузере, чей «запомнить меня» она
+ * сопровождает. Селектора атакующий не знает — кука HttpOnly.
  */
 final class Csrf
 {
@@ -206,7 +212,7 @@ final class Csrf
             return null;
         }
 
-        return Crypto::verify($token, $signature) ? $token : null;
+        return Crypto::verify(self::signed($token), $signature) ? $token : null;
     }
 
     /**
@@ -215,7 +221,7 @@ final class Csrf
      */
     private static function rememberInCookie(string $token): void
     {
-        $signature = Crypto::sign($token);
+        $signature = Crypto::sign(self::signed($token));
 
         if ($signature === '') {
             return;
@@ -225,6 +231,14 @@ final class Csrf
             'value'   => $token . '.' . $signature,
             'expires' => time() + self::lifetime(),
         ];
+    }
+
+    /**
+     * Что подписываем: токен вместе с селектором долгой куки этого браузера.
+     */
+    private static function signed(string $token): string
+    {
+        return $token . '|' . Auth::rememberSelector();
     }
 
     /**

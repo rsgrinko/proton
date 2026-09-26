@@ -6,6 +6,7 @@ declare(strict_types=1);
  * Блокировки адресов, журнал подозрительных событий и срок жизни ключей API.
  */
 
+use Rsgrinko\Proton\Auth\Auth;
 use Rsgrinko\Proton\Database\Model\Factory;
 use Rsgrinko\Proton\Models\ApiToken;
 use Rsgrinko\Proton\Models\BlockedIp;
@@ -153,4 +154,30 @@ test('ключи: в напоминание попадают только те, 
         assertCount(1, $expiring);
         assertSame('скоро', (string) $expiring[0]->name);
     });
+});
+
+test('безопасность: X-Forwarded-Proto слушаем только от своего прокси', function (): void {
+    $saved = $_SERVER;
+
+    try {
+        unset($_SERVER['HTTPS']);
+        $_SERVER['REMOTE_ADDR']            = '203.0.113.7';
+        $_SERVER['HTTP_X_FORWARDED_PROTO'] = 'https';
+
+        withConfig(['app.url' => 'http://example.test', 'app.trusted_proxies' => ''], static function (): void {
+            assertFalse(Auth::isHttps(), 'заголовок от чужого не в счёт');
+        });
+
+        withConfig(['app.url' => 'http://example.test', 'app.trusted_proxies' => '203.0.113.0/24'], static function (): void {
+            assertTrue(Auth::isHttps(), 'от своего прокси — верим');
+        });
+
+        unset($_SERVER['HTTP_X_FORWARDED_PROTO']);
+
+        withConfig(['app.url' => 'https://example.test', 'app.trusted_proxies' => ''], static function (): void {
+            assertTrue(Auth::isHttps(), 'приложение на https — куки Secure всегда');
+        });
+    } finally {
+        $_SERVER = $saved;
+    }
 });

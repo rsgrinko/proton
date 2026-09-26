@@ -6,6 +6,7 @@ namespace Rsgrinko\Proton\Queue;
 
 use Rsgrinko\Proton\Backup\Backup;
 use Rsgrinko\Proton\Cache\Cache;
+use Rsgrinko\Proton\Database\Connection;
 use Rsgrinko\Proton\Models\AuditEntry;
 use Rsgrinko\Proton\Models\BlockedIp;
 use Rsgrinko\Proton\Models\IncomingHook;
@@ -43,6 +44,9 @@ final class Worker
     private array $queues;
 
     private bool $stopping = false;
+
+    /** Когда последний раз заглядывали в обслуживание и расписание */
+    private int $lastTick = 0;
 
     /**
      * Очередей может быть несколько: `worker --queue=default,webhooks`. Порядок
@@ -91,6 +95,17 @@ final class Worker
 
             if ($job !== null) {
                 $this->perform($job) ? $done++ : $failed++;
+
+                // Расписание не ждёт, пока очередь опустеет: под непрерывным
+                // потоком вебхуков копии и присмотр иначе не случились бы вовсе.
+                // Между задачами — не чаще раза в паузу воркера
+                if (time() - $this->lastTick >= $sleep) {
+                    $this->maintenance();
+                }
+
+                if ($this->stopping) {
+                    break;
+                }
 
                 continue;
             }
@@ -185,8 +200,14 @@ final class Worker
 
             $profile = $this->profile($startedAt);
 
-            Queue::complete((int) $row['id'], $profile);
-            Queue::continueChain($payload, $job);
+            // Отметка об успехе и следующий шаг цепочки — одной транзакцией:
+            // не бывает состояния «выполнена, а шаг не встал». Не встал шаг —
+            // задача считается упавшей и повторится (Job обязан переживать
+            // повтор), а на повторе шаг поставится снова
+            Connection::instance()->transaction(static function () use ($row, $profile, $payload, $job): void {
+                Queue::complete((int) $row['id'], $profile);
+                Queue::continueChain($payload, $job);
+            });
 
             $this->logger->info('Задача выполнена', [
                 'id'      => (int) $row['id'],
@@ -243,12 +264,23 @@ final class Worker
      */
     private function maintenance(): void
     {
-        $interval = max(60, (int) Config::get('queue.maintenance_interval', 300));
-        $last     = (int) Setting::get('worker:maintenance', '0');
+        $this->lastTick = time();
 
-        if (time() - $last < $interval) {
-            // Расписание проверяем чаще уборки: у задач может быть свой минутный шаг
-            Scheduler::run();
+        $interval = max(60, (int) Config::get('queue.maintenance_interval', 300));
+
+        try {
+            $last = (int) Setting::get('worker:maintenance', '0');
+
+            if (time() - $last < $interval) {
+                // Расписание проверяем чаще уборки: у задач может быть свой минутный шаг
+                Scheduler::run();
+
+                return;
+            }
+        } catch (Throwable $e) {
+            // База моргнула — воркер не должен падать из-за расписания,
+            // следующий круг попробует снова
+            $this->logger->error('Расписание не доехало', ['error' => $e->getMessage()]);
 
             return;
         }

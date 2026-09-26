@@ -79,6 +79,10 @@ return [
         'registration' => Env::bool('AUTH_REGISTRATION', true),
         'verify_email' => Env::bool('AUTH_VERIFY_EMAIL', false),
 
+        // Какую роль получает зарегистрировавшийся сам — по имени. Роли нет или
+        // в ней есть права на управление сервисом — регистрация закрывается
+        'registration_role' => Env::string('AUTH_REGISTRATION_ROLE', 'Пользователь'),
+
         // Сколько живёт ссылка подтверждения и сброса пароля, секунды
         'link_lifetime' => Env::int('AUTH_LINK_LIFETIME', 86400),
     ],

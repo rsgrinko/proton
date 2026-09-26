@@ -98,11 +98,12 @@ final class UserCreateCommand extends Command
         }
 
         // Роль не указали: первому пользователю даём администратора,
-        // остальным — обычную, если она есть
-        if (User::query()->count() === 0) {
+        // остальным — ту же, что получают при регистрации (AUTH_REGISTRATION_ROLE),
+        // а не «первую невстроенную»: та может оказаться с правами управления
+        if (!User::query()->exists()) {
             return Role::admin();
         }
 
-        return Role::query()->where('is_system', 0)->first();
+        return Role::forRegistration();
     }
 }

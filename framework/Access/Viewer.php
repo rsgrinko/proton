@@ -30,10 +30,13 @@ final class Viewer
 
     private ?User $user;
 
+    /** Встроенная роль администратора: раздавать может всё, что есть и будет */
+    private bool $superuser;
+
     /**
      * @param array<int, string> $permissions
      */
-    private function __construct(int $id, string $login, string $name, array $permissions, bool $full, ?User $user = null)
+    private function __construct(int $id, string $login, string $name, array $permissions, bool $full, ?User $user = null, bool $superuser = false)
     {
         $this->id          = $id;
         $this->login       = $login;
@@ -41,6 +44,7 @@ final class Viewer
         $this->permissions = $permissions;
         $this->full        = $full;
         $this->user        = $user;
+        $this->superuser   = $superuser;
     }
 
     /**
@@ -67,7 +71,8 @@ final class Viewer
             (string) ($user->name !== '' ? $user->name : $user->login),
             $user->permissions(),
             false,
-            $user
+            $user,
+            $user->isSuperuser()
         );
     }
 
@@ -140,6 +145,25 @@ final class Viewer
         }
 
         return false;
+    }
+
+    /**
+     * Есть ли у него все эти права — значит, он вправе их раздать.
+     *
+     * На этом держится правило «нельзя выдать больше своего»: без него
+     * users.manage назначал бы себе роль администратора, roles.manage дописывал
+     * своей роли любое право, а users.impersonate входил под администратором.
+     * Распоряжаться человеком (править, удалять, входить под ним, выпускать
+     * ему ключ) можно, только если его права целиком покрыты своими:
+     * $viewer->covers($user->permissions()).
+     *
+     * @param array<int, string> $permissions
+     */
+    public function covers(array $permissions): bool
+    {
+        // Администратор со встроенной ролью покрывает всё — и то право, что
+        // зарегистрировали уже после того, как его права посчитали
+        return $this->full || $this->superuser || array_diff($permissions, $this->permissions) === [];
     }
 
     /**

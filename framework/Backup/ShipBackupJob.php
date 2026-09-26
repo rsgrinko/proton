@@ -23,6 +23,14 @@ final class ShipBackupJob extends Job
     }
 
     /**
+     * Большой файл по медленному FTP едет долго — общий срок тут мал.
+     */
+    public function timeout(): int
+    {
+        return 2 * 3600;
+    }
+
+    /**
      * @param array<string, mixed> $payload
      */
     public function handle(array $payload): void

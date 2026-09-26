@@ -20,7 +20,7 @@ use Rsgrinko\Proton\Support\Profiler;
  */
 function fakeUpload(string $name, string $content = 'содержимое'): UploadedFile
 {
-    $tmp = tempnam(sys_get_temp_dir(), 'proton');
+    $tmp = tempnam((string) \Rsgrinko\Proton\Support\Config::get('paths.tmp', APP_ROOT . '/var/tmp'), 'proton');
 
     file_put_contents((string) $tmp, $content);
 

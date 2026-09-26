@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace App\Controllers\Admin;
 
+use Rsgrinko\Proton\Access\AccessDenied;
 use Rsgrinko\Proton\Access\Permission;
+use Rsgrinko\Proton\Access\Viewer;
 use Rsgrinko\Proton\Http\Controller;
 use Rsgrinko\Proton\Http\Request;
 use Rsgrinko\Proton\Http\Response;
 use Rsgrinko\Proton\Models\ApiToken;
+use Rsgrinko\Proton\Models\Role;
 use Rsgrinko\Proton\Models\User;
 use Rsgrinko\Proton\Support\Audit;
 use Rsgrinko\Proton\Support\Filter;
@@ -23,7 +26,7 @@ use Rsgrinko\Proton\View\View;
  */
 final class TokensController extends Controller
 {
-    public function index(Request $request): Response
+    public function index(Request $request, Viewer $viewer): Response
     {
         $owners = [];
 
@@ -41,14 +44,14 @@ final class TokensController extends Controller
             'active'  => 'tokens',
             'page'    => $filters->apply(ApiToken::query())->paginate($this->page($request), $this->perPage()),
             'owners'  => $owners,
-            'users'   => User::query()->where('active', 1)->orderBy('login')->get(),
+            'users'   => $this->owners($viewer),
             'filters' => $filters,
             // Свежий ключ, если только что выпустили
             'issued'  => (string) View::takeStash('api_key', ''),
         ], 'Ключи API');
     }
 
-    public function store(Request $request): Response
+    public function store(Request $request, Viewer $viewer): Response
     {
         $data = $this->validate($request, [
             'name'      => 'nullable|max:191',
@@ -63,6 +66,14 @@ final class TokensController extends Controller
             'days'      => 'Срок в днях',
             'abilities' => 'Права ключа',
         ]);
+
+        // Ключ ходит с правами владельца: выпустить его на того, у кого прав
+        // больше, значит выдать себе эти права через API
+        $owner = User::find((int) $data['user_id']);
+
+        if ($owner === null || !$viewer->covers($owner->permissions())) {
+            throw new AccessDenied('Выпускать ключ можно только тому, чьи права не шире ваших');
+        }
 
         $ips = trim((string) ($data['ips'] ?? ''));
 
@@ -100,6 +111,31 @@ final class TokensController extends Controller
         $this->flash('Ключ выпущен. Скопируйте его сейчас — больше он не появится');
 
         return $this->redirect('admin.tokens');
+    }
+
+    /**
+     * Кому можно выпустить ключ: действующие пользователи, чьи права целиком
+     * есть у выпускающего. Права считаются по ролям разом, а не по человеку —
+     * иначе на каждую строку списка ушёл бы свой запрос роли.
+     *
+     * @return array<int, User>
+     */
+    private function owners(Viewer $viewer): array
+    {
+        $covered = [];
+
+        foreach (Role::all() as $role) {
+            $covered[$role->id()] = $viewer->covers($role->permissions());
+        }
+
+        /** @var array<int, User> $users */
+        $users = User::query()->where('active', 1)->orderBy('login')->get();
+
+        // Без роли (или с удалённой) у человека прав нет — такой покрыт всегда
+        return array_values(array_filter(
+            $users,
+            static fn (User $user): bool => $covered[(int) $user->raw('role_id')] ?? true
+        ));
     }
 
     public function revoke(int $id): Response

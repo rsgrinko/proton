@@ -102,3 +102,14 @@ test('валидатор: адрес почты проверяется по-на
     assertFalse(Validator::isEmail('без-собаки'));
     assertFalse(Validator::isEmail(''));
 });
+
+test('валидатор: ссылка — только http и https', function (): void {
+    foreach (['https://example.com/hook', 'http://127.0.0.1:8080/x'] as $url) {
+        assertTrue(Validator::make(['url' => $url], ['url' => 'url'])->passes(), 'должна пройти: ' . $url);
+    }
+
+    // FILTER_VALIDATE_URL такие пропускает, а за ними чтение файлов сервера
+    foreach (['file://localhost/etc/passwd', 'gopher://127.0.0.1:6379/_x', 'javascript://x/%0aalert(1)'] as $url) {
+        assertFalse(Validator::make(['url' => $url], ['url' => 'url'])->passes(), 'не должна пройти: ' . $url);
+    }
+});

@@ -13,7 +13,11 @@ final class {{class}} extends Model
 {
     protected static string $table = '{{table}}';
 
-    /** Что можно заполнять массово: остальное ставит код, а не форма */
+    /**
+     * Что можно заполнять массово через new/create()/fill()/update(): остальное
+     * ставит код (forceFill), а не форма. Пусто — не заполняется ничего:
+     * перечислите поля, иначе Model::create(['title' => …]) сохранит пустую строку
+     */
     protected array $fillable = [];
 
     /** Приведение типов: int, float, bool, json, datetime */

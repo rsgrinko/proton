@@ -246,3 +246,102 @@ test('расписание: задача «от конца» ставит отм
         Scheduler::reset();
     });
 });
+
+/**
+ * Долгая задача: свой срок до признания зависшей — два часа.
+ */
+final class QueueLongJob extends Job
+{
+    public function timeout(): int
+    {
+        return 7200;
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     */
+    public function handle(array $payload): void
+    {
+    }
+}
+
+/**
+ * Первый шаг ставит второй, второй запоминает, успело ли к нему сработать расписание.
+ */
+final class QueueStarvationJob extends Job
+{
+    /**
+     * @param array<string, mixed> $payload
+     */
+    public function handle(array $payload): void
+    {
+        if (($payload['step'] ?? 1) === 1) {
+            Queue::push(self::class, ['step' => 2]);
+
+            return;
+        }
+
+        Setting::set('test:starvation:seen', Setting::get('test:starvation:tick', 'нет'));
+    }
+}
+
+test('очередь: задача, которая роняет воркер, не крутится вечно', function (): void {
+    withOwnDatabase(static function (): void {
+        Setting::set('test:job:failed', '');
+
+        $id = Queue::push(QueueFailingJob::class);
+
+        // Последняя попытка взята и не вернулась: воркер умер, catch не дошёл
+        Connection::instance()->update('jobs', [
+            'status'      => Queue::RUNNING,
+            'attempts'    => 2,
+            'reserved_at' => date('Y-m-d H:i:s', time() - 3600),
+        ], ['id' => $id]);
+
+        assertSame(1, Queue::releaseStuck(15));
+
+        $row = assertNotNull(Connection::instance()->selectOne('SELECT * FROM jobs WHERE id = :id', ['id' => $id]));
+
+        assertSame(Queue::DEAD, (string) $row['status'], 'попытки кончились — в мёртвые, а не снова в очередь');
+        assertContains('Воркер пропал', Setting::get('test:job:failed'), 'обработчик отказа зовётся и здесь');
+    });
+});
+
+test('очередь: долгую задачу не снимают как зависшую раньше её срока', function (): void {
+    withOwnDatabase(static function (): void {
+        $id = Queue::push(QueueLongJob::class);
+
+        Connection::instance()->update('jobs', [
+            'status'      => Queue::RUNNING,
+            'attempts'    => 1,
+            'reserved_at' => date('Y-m-d H:i:s', time() - 3600),
+        ], ['id' => $id]);
+
+        assertSame(0, Queue::releaseStuck(15), 'час из двух разрешённых — ещё работает');
+
+        Connection::instance()->update('jobs', ['reserved_at' => date('Y-m-d H:i:s', time() - 3 * 3600)], ['id' => $id]);
+
+        assertSame(1, Queue::releaseStuck(15), 'а за своим сроком — зависла');
+    });
+});
+
+test('очередь: расписание не ждёт, пока очередь опустеет', function (): void {
+    withOwnDatabase(static function (): void {
+        Scheduler::reset();
+        Setting::set('test:starvation:tick', '');
+
+        Scheduler::every(3600, 'test:starvation', static function (): void {
+            Setting::set('test:starvation:tick', 'было');
+        });
+
+        try {
+            Queue::push(QueueStarvationJob::class, ['step' => 1]);
+
+            (new Worker())->run(true);
+
+            assertSame('было', Setting::get('test:starvation:seen'), 'расписание сработало между задачами');
+        } finally {
+            Scheduler::reset();
+        }
+    });
+});

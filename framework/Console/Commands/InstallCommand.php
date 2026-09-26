@@ -9,6 +9,7 @@ use Rsgrinko\Proton\Console\Command;
 use Rsgrinko\Proton\Install\Installer;
 use Rsgrinko\Proton\Models\User;
 use Rsgrinko\Proton\Support\Config;
+use Rsgrinko\Proton\Support\ProtonException;
 use Rsgrinko\Proton\Support\Validator;
 
 /**
@@ -46,7 +47,18 @@ final class InstallCommand extends Command
         $this->line('Установка ' . (string) Config::get('app.name', 'Proton'));
         $this->line('');
 
-        if (Installer::installed() && !$this->hasOption('force')) {
+        // База не отвечает — в консоли это повод поправить настройки мастером,
+        // а не отказ: в вебе то же самое закрыто (см. Installer::installed())
+        try {
+            $installed = Installer::installed();
+        } catch (ProtonException $e) {
+            $this->line($e->getMessage() . ' — продолжаю, настройки базы спрошу заново');
+            $this->line('');
+
+            $installed = false;
+        }
+
+        if ($installed && !$this->hasOption('force')) {
             $this->line('Приложение уже установлено. Повторить установку — с ключом --force');
 
             return 0;

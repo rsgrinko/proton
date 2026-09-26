@@ -6,7 +6,9 @@ declare(strict_types=1);
  * Карточка пользователя — она же форма заведения.
  *
  * @var \Rsgrinko\Proton\Models\User $user
- * @var array<int, \Rsgrinko\Proton\Models\Role> $roles
+ * @var array<int, \Rsgrinko\Proton\Models\Role> $roles все роли — чтобы назвать текущую
+ * @var array<int, \Rsgrinko\Proton\Models\Role> $assignable роли, которые смотрящий вправе выдать
+ * @var bool $editable права человека целиком покрыты правами смотрящего
  * @var array<int, \Rsgrinko\Proton\Models\UserField> $fields свои поля профиля — заведены в панели
  * @var array<int, string> $metaValues значения своих полей: id поля => значение
  * @var array<int, array{id: string, kind: string, ip: string, agent: string, created: string, last: string, current: bool}> $devices
@@ -22,7 +24,9 @@ $action    = $isNew ? View::route('admin.users.create') : View::route('admin.use
 $hint      = $isNew ? 'пусто — придумаем сами' : 'пусто — не менять';
 // Новый — только у тех, кто прошёл can:users.manage в маршруте; карточку же
 // существующего человека открывает и users.view — форму правки там не покажем
-$canManage = View::can(Permission::USERS_MANAGE);
+// Того, у кого прав больше, не правят, не удаляют и не входят под ним:
+// контроллер это всё равно не пропустит, а кнопки не должны обещать лишнего
+$canManage = View::can(Permission::USERS_MANAGE) && $editable;
 
 $roleName = '—';
 foreach ($roles as $role) {
@@ -63,7 +67,7 @@ foreach ($roles as $role) {
         <label>
             <span>Роль</span>
             <select name="role_id">
-                <?php foreach ($roles as $role) { ?>
+                <?php foreach ($assignable as $role) { ?>
                     <option value="<?= $role->id() ?>" <?= (int) $user->raw('role_id') === $role->id() ? 'selected' : '' ?>>
                         <?= View::e((string) $role->name) ?>
                     </option>
@@ -178,7 +182,7 @@ foreach ($roles as $role) {
         <?php } ?>
     </div>
 
-    <?php if (View::can(Permission::USERS_IMPERSONATE) && $user->id() !== View::viewer()->id() && $user->isActive()) { ?>
+    <?php if (View::can(Permission::USERS_IMPERSONATE) && $editable && $user->id() !== View::viewer()->id() && $user->isActive()) { ?>
         <div class="card">
             <h2>Вход под пользователем</h2>
             <p class="muted small">Панель и сайт откроются его правами — свои действия увидите в журнале за него.</p>

@@ -88,7 +88,9 @@ final class Storage
         $real     = realpath($full);
         $realRoot = realpath($root);
 
-        if ($real === false || $realRoot === false || !str_starts_with($real, $realRoot)) {
+        // Сравниваем со слэшем на конце: иначе var/storage-old прошёл бы как
+        // «внутри var/storage»
+        if ($real === false || $realRoot === false || !str_starts_with($real, rtrim($realRoot, '/\\') . DIRECTORY_SEPARATOR)) {
             throw new ProtonException('Файл вне хранилища: ' . $relative);
         }
 

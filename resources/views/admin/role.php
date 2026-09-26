@@ -16,8 +16,10 @@ $isNew     = !$role->existsInDatabase();
 $action    = $isNew ? View::route('admin.roles.create') : View::route('admin.roles.show', ['id' => $role->id()]);
 $granted   = $role->permissions();
 // Новая роль — только у тех, кто прошёл can:roles.manage в маршруте; карточку
-// существующей открывает и roles.view — тогда поля и галочки не трогать
-$canManage = View::can(Permission::ROLES_MANAGE);
+// существующей открывает и roles.view — тогда поля и галочки не трогать.
+// Роль, в которой есть права сверх своих, тоже только на просмотр: править
+// её нельзя, иначе roles.manage раздавал бы то, чего у него нет
+$canManage = View::can(Permission::ROLES_MANAGE) && View::viewer()->covers($granted);
 $readOnly  = !$isNew && !$canManage;
 ?>
 <h1><?= $isNew ? 'Новая роль' : View::e((string) $role->name) ?></h1>
@@ -51,7 +53,7 @@ $readOnly  = !$isNew && !$canManage;
                     <?php foreach ($permissions as $code => $label) { ?>
                         <label class="inline" style="margin-bottom: 6px;">
                             <input type="checkbox" name="permissions[]" value="<?= View::e($code) ?>"
-                                <?= in_array($code, $granted, true) ? 'checked' : '' ?> <?= $readOnly ? 'disabled' : '' ?>>
+                                <?= in_array($code, $granted, true) ? 'checked' : '' ?> <?= $readOnly || !View::can($code) ? 'disabled' : '' ?>>
                             <span><?= View::e($label) ?> <span class="muted mono"><?= View::e($code) ?></span></span>
                         </label>
                     <?php } ?>

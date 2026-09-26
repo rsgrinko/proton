@@ -26,6 +26,14 @@ final class ExportJob extends Job
     }
 
     /**
+     * Фоновая выгрузка на то и фоновая, что большая: общий срок ей мал.
+     */
+    public function timeout(): int
+    {
+        return 2 * 3600;
+    }
+
+    /**
      * @param array<string, mixed> $payload
      */
     public function handle(array $payload): void

@@ -68,6 +68,7 @@ final class Settings
         'Вход и регистрация' => [
             'auth.registration'      => ['label' => 'Открыта регистрация', 'type' => self::BOOL, 'env' => 'AUTH_REGISTRATION'],
             'auth.verify_email'      => ['label' => 'Требовать подтверждение почты', 'type' => self::BOOL, 'env' => 'AUTH_VERIFY_EMAIL'],
+            'auth.registration_role' => ['label' => 'Роль при регистрации', 'type' => self::STRING, 'env' => 'AUTH_REGISTRATION_ROLE', 'hint' => 'имя роли; с правами на управление регистрация закроется'],
             'auth.max_attempts'      => ['label' => 'Попыток входа до блокировки', 'type' => self::INT, 'env' => 'AUTH_MAX_ATTEMPTS'],
             'auth.attempts_window'   => ['label' => 'Окно попыток входа, сек', 'type' => self::INT, 'env' => 'AUTH_ATTEMPTS_WINDOW'],
             'auth.cookie_prefix'     => ['label' => 'Начало имени кук', 'type' => self::STRING, 'env' => 'AUTH_COOKIE_PREFIX'],

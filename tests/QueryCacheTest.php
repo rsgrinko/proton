@@ -111,3 +111,50 @@ test('запрос: count() тоже кэшируется', function (): void {
         $db->execute("DELETE FROM settings WHERE setting_key LIKE :prefix", ['prefix' => $prefix . '%']);
     }
 });
+
+test('запрос: свой ключ не склеивает страницы paginate() в одну', function (): void {
+    $db     = Connection::instance();
+    $prefix = 'test.pages.' . bin2hex(random_bytes(4)) . '.';
+    $key    = 'test:pages:' . bin2hex(random_bytes(4));
+
+    foreach (['a', 'b', 'c'] as $suffix) {
+        $db->insert('settings', ['setting_key' => $prefix . $suffix, 'value' => $suffix, 'updated_at' => Connection::now()]);
+    }
+
+    try {
+        $page = static fn (int $number): array => array_column(
+            $db->table('settings')->whereLike('setting_key', $prefix)->orderBy('setting_key')
+                ->remember(60, $key)->paginate($number, 1)['items'],
+            'value'
+        );
+
+        assertSame(['a'], $page(1));
+        assertSame(['b'], $page(2), 'вторая страница — своя, а не первая из кэша');
+        assertSame(['c'], $page(3));
+
+        // forget() по ключу сбрасывает все страницы разом
+        $db->update('settings', ['value' => 'A'], ['setting_key' => $prefix . 'a']);
+        Cache::forget('query:' . $key . ':get');
+
+        assertSame(['A'], $page(1));
+    } finally {
+        Cache::forget('query:' . $key . ':get');
+        Cache::forget('query:' . $key . ':count:*');
+        $db->execute('DELETE FROM settings WHERE setting_key LIKE :p', ['p' => $prefix . '%']);
+    }
+});
+
+test('запрос: пустой ответ тоже кэшируется, а не идёт в базу каждый раз', function (): void {
+    $db  = Connection::instance();
+    $key = 'test.empty.' . bin2hex(random_bytes(4));
+
+    try {
+        assertNull($db->table('settings')->where('setting_key', $key)->remember(60)->first());
+
+        $db->insert('settings', ['setting_key' => $key, 'value' => 'появилось', 'updated_at' => Connection::now()]);
+
+        assertNull($db->table('settings')->where('setting_key', $key)->remember(60)->first(), 'пустота из кэша, строку ещё не видим');
+    } finally {
+        $db->delete('settings', ['setting_key' => $key]);
+    }
+});

@@ -135,6 +135,11 @@ class HttpClient
      */
     public function request(string $method, string $url, string $body = '', array $headers = []): array
     {
+        // Схему проверяем до подделки в тестах: запрет должен работать везде
+        if (!self::allowedScheme($url)) {
+            throw new ProtonException('Ходим только по http и https: ' . $url);
+        }
+
         if (self::$fakeResponses !== null) {
             return $this->fakeRequest($method, $url, $body, $headers);
         }
@@ -148,6 +153,18 @@ class HttpClient
         $response['duration'] = (int) round((microtime(true) - $started) * 1000);
 
         return $response;
+    }
+
+    /**
+     * Годится ли адрес для запроса: только http и https. curl умеет и file://,
+     * и gopher://, и dict:// — адрес из панели (подписка вебхука) тогда читал
+     * бы файлы сервера или слал сырые байты во внутренние сервисы.
+     */
+    public static function allowedScheme(string $url): bool
+    {
+        $scheme = strtolower((string) parse_url($url, PHP_URL_SCHEME));
+
+        return $scheme === 'http' || $scheme === 'https';
     }
 
     /**
@@ -193,6 +210,9 @@ class HttpClient
             // Переадресацию не ходим: подписчик должен дать рабочий адрес,
             // иначе подпись уйдёт туда, куда её не ждут
             CURLOPT_FOLLOWLOCATION => false,
+            // Вторая стена после allowedScheme(): даже если проверку обойдут,
+            // curl другие протоколы не откроет
+            CURLOPT_PROTOCOLS      => CURLPROTO_HTTP | CURLPROTO_HTTPS,
         ]);
 
         if ($body !== '') {

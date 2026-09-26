@@ -51,6 +51,8 @@ final class User extends Model
      */
     private ?array $permissionsCache = null;
 
+    private ?bool $superuserCache = null;
+
     public function role(): BelongsTo
     {
         return $this->belongsTo(Role::class, 'role_id');
@@ -71,6 +73,21 @@ final class User extends Model
      *
      * @return array<int, string>
      */
+    /**
+     * Со встроенной ролью администратора: у него всё, включая права, которых
+     * ещё нет в реестре на момент, когда его права посчитали.
+     */
+    public function isSuperuser(): bool
+    {
+        if ($this->superuserCache !== null) {
+            return $this->superuserCache;
+        }
+
+        $role = Role::find((int) $this->raw('role_id'));
+
+        return $this->superuserCache = $role !== null && $role->isSystem();
+    }
+
     public function permissions(): array
     {
         if ($this->permissionsCache !== null) {

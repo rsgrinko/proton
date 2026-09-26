@@ -39,6 +39,48 @@ final class Metrics
             return;
         }
 
+        // Прочитать-прибавить-записать под замком: без него параллельные
+        // запросы читали одно и то же ведёрко, и часть попаданий терялась
+        $lock = self::lock();
+
+        try {
+            self::add($milliseconds, $status);
+        } finally {
+            if ($lock !== null) {
+                flock($lock, LOCK_UN);
+                fclose($lock);
+            }
+        }
+    }
+
+    /**
+     * Замок на ведёрко — файловый, а не Database\Lock: тот на MySQL стоил бы
+     * лишнего запроса на каждый ответ. Не открылся — считаем без замка,
+     * счётчик не повод портить страницу.
+     *
+     * @return resource|null
+     */
+    private static function lock()
+    {
+        $dir = (string) Config::get('paths.tmp', APP_ROOT . '/var/tmp');
+
+        $handle = @fopen($dir . '/metrics.lock', 'c');
+
+        if ($handle === false) {
+            return null;
+        }
+
+        if (!flock($handle, LOCK_EX)) {
+            fclose($handle);
+
+            return null;
+        }
+
+        return $handle;
+    }
+
+    private static function add(float $milliseconds, int $status): void
+    {
         $key    = self::key();
         $bucket = (array) (Cache::get($key) ?? ['requests' => 0, 'ms' => 0.0, 'errors' => 0, 'slow' => 0]);
 

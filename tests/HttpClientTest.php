@@ -52,3 +52,20 @@ test('HttpClient: reset() выключает подмену и чистит жу
 
     assertSame([], HttpClient::recorded());
 });
+
+test('HttpClient: ходит только по http и https', function (): void {
+    // Даже под подменой: запрет не должен зависеть от того, тест это или бой
+    HttpClient::fake(['*' => ['status' => 200, 'body' => 'не должно дойти']]);
+
+    try {
+        foreach (['file://localhost/etc/passwd', 'gopher://127.0.0.1:6379/_x', 'ftp://example.com/a'] as $url) {
+            assertThrows(static fn () => (new HttpClient())->get($url), 'схема не должна пройти: ' . $url);
+        }
+
+        assertCount(0, HttpClient::recorded(), 'до сети ничего не ушло');
+        assertTrue(HttpClient::allowedScheme('https://example.com/hook'));
+        assertTrue(HttpClient::allowedScheme('http://10.0.0.5:8080/hook'), 'внутренние адреса по http разрешены');
+    } finally {
+        HttpClient::reset();
+    }
+});

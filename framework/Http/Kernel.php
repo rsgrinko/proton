@@ -174,8 +174,18 @@ final class Kernel
             return null;
         }
 
-        if (Maintenance::allows($request->ip()) || Auth::viewer()->can(Permission::SYSTEM_MANAGE)) {
+        if (Maintenance::allows($request->ip())) {
             return null;
+        }
+
+        // Право смотрим по базе, а на время работ её как раз могут погасить:
+        // тогда администратор видит ту же заглушку, что и все, а не 500
+        try {
+            if (Auth::viewer()->can(Permission::SYSTEM_MANAGE)) {
+                return null;
+            }
+        } catch (Throwable) {
+            // Проверить не вышло — пускать не за что
         }
 
         $payload = Maintenance::payload();
@@ -183,7 +193,7 @@ final class Kernel
 
         $response = $request->wantsJson()
             ? Response::error($message, 503)
-            : Response::html(View::render('errors/503', ['message' => $message], 'Технические работы'), 503);
+            : Response::html($this->unavailablePage($message, 'Технические работы'), 503);
 
         return $payload['retry'] > 0 ? $response->withHeader('Retry-After', (string) $payload['retry']) : $response;
     }
@@ -247,6 +257,21 @@ final class Kernel
     {
         $status = (int) $e->getCode();
 
+        // Недоступна база или другая зависимость: в лог как поломку, а человеку
+        // и мониторингу — 503, повторить позже. Текст исключения наружу не идёт
+        if ($status === 503) {
+            $this->logger->error('Сервис недоступен', ['path' => $request->path, 'error' => $e->getMessage()]);
+
+            $message = 'Сервис временно недоступен, зайдите чуть позже.';
+
+            if ($request->wantsJson()) {
+                return Response::error($message, 503);
+            }
+
+            return Response::html($this->unavailablePage($message, 'Сервис недоступен'), 503)
+                ->withHeader('Retry-After', '60');
+        }
+
         if ($status < 400 || $status > 499) {
             return $this->crashed($request, $e);
         }
@@ -260,6 +285,19 @@ final class Kernel
         return Response::html(View::render('errors/404', ['message' => $e->getMessage()], $title), $status);
     }
 
+    /**
+     * Страница 503. Каркас спрашивает, кто вошёл, а это снова база — когда её
+     * нет, отдаём голый HTML, лишь бы не упасть второй раз на самой заглушке.
+     */
+    private function unavailablePage(string $message, string $title): string
+    {
+        try {
+            return View::render('errors/503', ['message' => $message], $title);
+        } catch (Throwable) {
+            return '<!doctype html><meta charset="utf-8"><title>' . View::e($title) . '</title><p>' . View::e($message) . '</p>';
+        }
+    }
+
     private function invalid(Request $request, ValidationException $e): Response
     {
         if ($request->wantsJson()) {
@@ -271,7 +309,27 @@ final class Kernel
         View::stash('errors', $e->errors());
         View::flash($e->first(), 'error');
 
-        return Response::redirect($request->header('referer') !== '' ? $request->header('referer') : $request->fullPath());
+        return Response::redirect(self::backPath($request));
+    }
+
+    /**
+     * Куда вернуть форму: путь из Referer, но только путь. Весь адрес целиком
+     * брать нельзя — Referer присылает браузер, и ссылка с чужого сайта на
+     * GET-адрес с проверкой уводила бы человека обратно туда (открытый редирект).
+     */
+    private static function backPath(Request $request): string
+    {
+        $referer = $request->header('referer');
+        $path    = (string) parse_url($referer, PHP_URL_PATH);
+
+        // «//evil.example» браузер понимает как адрес на другом домене
+        if ($referer === '' || !str_starts_with($path, '/') || str_starts_with($path, '//')) {
+            return $request->fullPath();
+        }
+
+        $query = (string) parse_url($referer, PHP_URL_QUERY);
+
+        return $query === '' ? $path : $path . '?' . $query;
     }
 
     private function crashed(Request $request, Throwable $e): Response

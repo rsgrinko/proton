@@ -41,11 +41,13 @@ return static function (Router $router): void {
             $router->get('/me', [SystemController::class, 'me'])->name('api.me');
             $router->get('/metrics', [SystemController::class, 'metrics'])->name('api.metrics');
 
-            $router->get('/notes', [NotesController::class, 'index'])->name('api.notes.index');
-            $router->post('/notes', [NotesController::class, 'store'])->name('api.notes.store');
-            $router->get('/notes/{id:\d+}', [NotesController::class, 'show'])->name('api.notes.show');
-            $router->patch('/notes/{id:\d+}', [NotesController::class, 'update'])->name('api.notes.update');
-            $router->delete('/notes/{id:\d+}', [NotesController::class, 'delete'])->name('api.notes.delete');
+            // Права те же, что у веба: ключ с --abilities=notes.view читает,
+            // но не пишет. can: здесь проверяет владельца ключа, а не сессию
+            $router->get('/notes', [NotesController::class, 'index'])->middleware('can:notes.view')->name('api.notes.index');
+            $router->post('/notes', [NotesController::class, 'store'])->middleware('can:notes.manage')->name('api.notes.store');
+            $router->get('/notes/{id:\d+}', [NotesController::class, 'show'])->middleware('can:notes.view')->name('api.notes.show');
+            $router->patch('/notes/{id:\d+}', [NotesController::class, 'update'])->middleware('can:notes.manage')->name('api.notes.update');
+            $router->delete('/notes/{id:\d+}', [NotesController::class, 'delete'])->middleware('can:notes.manage')->name('api.notes.delete');
         });
     });
 };

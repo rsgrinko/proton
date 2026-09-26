@@ -30,6 +30,15 @@ final class BackupJob extends Job
     }
 
     /**
+     * Копия большой базы со сжатием и проверкой идёт дольше обычных 15 минут —
+     * по общему сроку второй воркер снял бы её как зависшую и начал заново.
+     */
+    public function timeout(): int
+    {
+        return 3 * 3600;
+    }
+
+    /**
      * @param array<string, mixed> $payload
      */
     public function handle(array $payload): void

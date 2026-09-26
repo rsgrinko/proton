@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Controllers\Admin;
 
+use Rsgrinko\Proton\Access\AccessDenied;
+use Rsgrinko\Proton\Access\Viewer;
 use Rsgrinko\Proton\Auth\Auth;
 use Rsgrinko\Proton\Auth\Devices;
 use Rsgrinko\Proton\Auth\Password;
@@ -73,17 +75,19 @@ final class UsersController extends Controller
         ])->sortable(['id', 'login', 'created_at', 'last_login_at'], 'id', 'asc');
     }
 
-    public function create(): Response
+    public function create(Viewer $viewer): Response
     {
         return $this->view('admin/user', [
-            'active' => 'users',
-            'user'   => new User(),
-            'roles'  => Role::all(),
-            'devices' => [],
+            'active'     => 'users',
+            'user'       => new User(),
+            'roles'      => Role::all(),
+            'assignable' => Role::assignableBy($viewer),
+            'editable'   => true,
+            'devices'    => [],
         ], 'Новый пользователь');
     }
 
-    public function store(Request $request): Response
+    public function store(Request $request, Viewer $viewer): Response
     {
         $data = $this->validate($request, [
             'login'    => 'required|min:3|max:100|regex:/^[A-Za-z0-9._-]+$/|unique:users,login',
@@ -98,6 +102,8 @@ final class UsersController extends Controller
             'name'    => 'Имя',
             'role_id' => 'Роль',
         ]);
+
+        $this->assertAssignable($viewer, (int) $data['role_id']);
 
         // Пароль не задали — придумываем и показываем один раз: в базе он хешем
         $password  = (string) ($data['password'] ?? '');
@@ -127,7 +133,7 @@ final class UsersController extends Controller
         return $this->redirect('admin.users.show', ['id' => $user->id()]);
     }
 
-    public function show(int $id): Response
+    public function show(int $id, Viewer $viewer): Response
     {
         /** @var User $user */
         $user = $this->require(User::find($id), 'admin.users', 'Пользователь не найден');
@@ -136,16 +142,22 @@ final class UsersController extends Controller
             'active'     => 'users',
             'user'       => $user,
             'roles'      => Role::all(),
+            'assignable' => Role::assignableBy($viewer),
+            // Карточку того, у кого прав больше, показываем, но без правки,
+            // удаления и входа под ним
+            'editable'   => $viewer->covers($user->permissions()),
             'devices'    => Devices::of($user->id()),
             'fields'     => UserField::allOrdered(),
             'metaValues' => UserFieldValue::valuesFor($user->id()),
         ], (string) $user->login);
     }
 
-    public function update(Request $request, int $id): Response
+    public function update(Request $request, int $id, Viewer $viewer): Response
     {
         /** @var User $user */
         $user = $this->require(User::find($id), 'admin.users', 'Пользователь не найден');
+
+        $this->assertManageable($viewer, $user);
 
         $data = $this->validate($request, [
             'email'    => 'nullable|email|max:191|unique:users,email,' . $user->id(),
@@ -154,6 +166,10 @@ final class UsersController extends Controller
             'active'   => 'nullable|boolean',
             'password' => 'nullable|min:' . (int) Config::get('auth.password_min', 6),
         ], ['email' => 'Почта', 'name' => 'Имя', 'role_id' => 'Роль', 'password' => 'Пароль']);
+
+        // Свою карточку править можно, а вот поднять себе роль — нет: новая
+        // роль проверяется так же, как при заведении
+        $this->assertAssignable($viewer, (int) $data['role_id']);
 
         $before = [
             'email'   => $user->email,
@@ -206,10 +222,12 @@ final class UsersController extends Controller
     }
 
     // $user — тот, кто нажал кнопку: роутер подставляет атрибут по имени аргумента
-    public function delete(int $id, User $user): Response
+    public function delete(int $id, User $user, Viewer $viewer): Response
     {
         /** @var User $target */
         $target = $this->require(User::find($id), 'admin.users', 'Пользователь не найден');
+
+        $this->assertManageable($viewer, $target);
 
         if ($target->id() === $user->id()) {
             $this->flash('Себя удалять нельзя', 'error');
@@ -238,15 +256,20 @@ final class UsersController extends Controller
     /**
      * Войти под пользователем: смотреть панель и сайт его глазами, с его правами.
      * Право `users.impersonate` уже проверила прослойка маршрута — здесь только
-     * то, что от маршрута не зависит: не собой, не отключённым.
+     * то, что от маршрута не зависит: не собой, не отключённым и не под тем,
+     * у кого прав больше.
      *
      * $user — тот, кто нажал кнопку, его роутер подставляет по имени аргумента
      * из атрибута запроса (см. Authenticate).
      */
-    public function impersonate(int $id, User $user): Response
+    public function impersonate(int $id, User $user, Viewer $viewer): Response
     {
         /** @var User $target */
         $target = $this->require(User::find($id), 'admin.users', 'Пользователь не найден');
+
+        // Под тем, у кого прав больше, входить нельзя: иначе users.impersonate
+        // равнялся бы полному доступу
+        $this->assertManageable($viewer, $target);
 
         if ($target->id() === $user->id()) {
             $this->flash('Входить под собой незачем', 'error');
@@ -295,7 +318,7 @@ final class UsersController extends Controller
      * Себя в список не берём ни при каком действии: выключить или удалить
      * самого себя — верный способ остаться без панели.
      */
-    public function bulk(Request $request, User $user): Response
+    public function bulk(Request $request, User $user, Viewer $viewer): Response
     {
         $data = $this->validate($request, [
             'action' => 'required|in:enable,disable,delete',
@@ -315,6 +338,11 @@ final class UsersController extends Controller
 
         /** @var User $target */
         foreach (User::query()->whereIn('id', $ids)->get() as $target) {
+            // Тех, у кого прав больше, молча пропускаем: в итоговом числе их не будет
+            if (!$viewer->covers($target->permissions())) {
+                continue;
+            }
+
             // Последнего активного не выключаем и не удаляем: войти станет некому
             if ($action !== 'enable' && $target->isActive() && User::query()->where('active', 1)->count() <= 1) {
                 continue;
@@ -339,6 +367,29 @@ final class UsersController extends Controller
         );
 
         return $this->redirect('admin.users');
+    }
+
+    /**
+     * Роль выдаётся, только если все её права есть у того, кто выдаёт.
+     */
+    private function assertAssignable(Viewer $viewer, int $roleId): void
+    {
+        $role = Role::find($roleId);
+
+        if ($role !== null && !$viewer->covers($role->permissions())) {
+            throw new AccessDenied('Роль «' . (string) $role->name . '» даёт права, которых у вас нет — выдать её нельзя');
+        }
+    }
+
+    /**
+     * Править, удалять и входить под человеком можно, только если его права
+     * целиком есть у того, кто это делает.
+     */
+    private function assertManageable(Viewer $viewer, User $target): void
+    {
+        if (!$viewer->covers($target->permissions())) {
+            throw new AccessDenied('У пользователя ' . (string) $target->login . ' больше прав, чем у вас — распоряжаться им нельзя');
+        }
     }
 
     /**

@@ -61,6 +61,21 @@ test('модель: массово заполняются только разр�
     assertSame(modelTestUser()->id(), (int) $note->raw('user_id'));
 });
 
+test('модель: пустой $fillable не пускает ничего', function (): void {
+    // Забытый список не должен открывать все колонки разом: fill() и update()
+    // у такой модели отбрасывают всё, заполнить можно только forceFill()
+    $model = new class (['user_id' => 999999, 'title' => 'Из формы']) extends Rsgrinko\Proton\Database\Model\Model {
+        protected static string $table = 'notes';
+    };
+
+    assertNull($model->raw('user_id'));
+    assertNull($model->raw('title'));
+
+    $model->forceFill(['title' => 'Своим кодом']);
+
+    assertSame('Своим кодом', $model->raw('title'));
+});
+
 test('модель: приведение типов работает в обе стороны', function (): void {
     $note = Note::create(['title' => 'Типы', 'pinned' => 1]);
 

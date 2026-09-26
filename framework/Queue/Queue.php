@@ -260,21 +260,89 @@ final class Queue
     }
 
     /**
-     * Возвращает в очередь задачи, зависшие в running: воркер мог быть убит
-     * посреди работы, и без этого они висели бы вечно.
+     * Разбирает задачи, зависшие в running: воркер мог быть убит посреди работы,
+     * и без этого они висели бы вечно.
+     *
+     * Зависшей задача считается, когда с захвата прошло больше её Job::timeout()
+     * (по умолчанию $minutes): иначе долгую копию базы второй воркер запустил
+     * бы повторно, пока первая ещё идёт. Попытки при этом тоже считаются —
+     * задача, которая сама роняет воркер (фатальная ошибка, нехватка памяти),
+     * до catch не доходит, и без проверки крутилась бы по кругу вечно. Такая
+     * уходит в мёртвые, и у неё зовётся failed().
+     *
+     * Возвращает, сколько задач разобрано — и возвращённых, и похороненных.
      */
     public static function releaseStuck(int $minutes = 15): int
     {
-        return Connection::instance()->execute(
-            'UPDATE jobs SET status = :status, updated_at = :now
-             WHERE status = :running AND reserved_at < :edge',
-            [
-                'status'  => self::QUEUED,
-                'now'     => Connection::now(),
-                'running' => self::RUNNING,
-                'edge'    => date('Y-m-d H:i:s', time() - max(1, $minutes) * 60),
-            ]
+        $db      = Connection::instance();
+        $handled = 0;
+        $default = max(1, $minutes) * 60;
+
+        $rows = $db->select(
+            'SELECT * FROM jobs WHERE status = :running AND reserved_at < :edge',
+            // Раньше самого короткого разумного срока ничего не зависает —
+            // остальное отсеивается ниже по таймауту своего класса
+            ['running' => self::RUNNING, 'edge' => date('Y-m-d H:i:s', time() - min($default, 60))]
         );
+
+        foreach ($rows as $row) {
+            $job     = self::instantiate((string) $row['job_class']);
+            $timeout = $job?->timeout() ?? $default;
+
+            if ((int) strtotime((string) $row['reserved_at']) + $timeout >= time()) {
+                continue;
+            }
+
+            $dead = (int) $row['attempts'] >= (int) $row['max_attempts'];
+
+            $error = $dead
+                ? 'Воркер пропал посреди задачи, попытки кончились — похоже, задача сама его роняет'
+                : 'Воркер пропал посреди задачи — возвращена в очередь';
+
+            // Условие на status: пока мы думали, воркер мог и доделать её
+            $updated = $db->execute(
+                'UPDATE jobs SET status = :status, error = :error, finished_at = :finished, updated_at = :now
+                 WHERE id = :id AND status = :running',
+                [
+                    'status'   => $dead ? self::DEAD : self::QUEUED,
+                    'error'    => $error,
+                    'finished' => $dead ? Connection::now() : null,
+                    'now'      => Connection::now(),
+                    'id'       => (int) $row['id'],
+                    'running'  => self::RUNNING,
+                ]
+            );
+
+            if ($updated === 0) {
+                continue;
+            }
+
+            $handled++;
+
+            if ($dead && $job !== null) {
+                $payload = json_decode((string) $row['payload'], true);
+
+                try {
+                    $job->failed(is_array($payload) ? $payload : [], $error);
+                } catch (\Throwable) {
+                    // Обработчик отказа не должен мешать разбирать остальные
+                }
+            }
+        }
+
+        return $handled;
+    }
+
+    /**
+     * Объект задачи по имени класса или null, если класса больше нет.
+     */
+    private static function instantiate(string $class): ?Job
+    {
+        if (!class_exists($class) || !is_subclass_of($class, Job::class)) {
+            return null;
+        }
+
+        return new $class();
     }
 
     /**

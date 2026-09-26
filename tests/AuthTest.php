@@ -8,6 +8,7 @@ declare(strict_types=1);
 
 use Rsgrinko\Proton\Auth\Auth;
 use Rsgrinko\Proton\Auth\Crypto;
+use Rsgrinko\Proton\Auth\Csrf;
 use Rsgrinko\Proton\Auth\Devices;
 use Rsgrinko\Proton\Auth\Password;
 use Rsgrinko\Proton\Models\AuthToken;
@@ -15,6 +16,7 @@ use Rsgrinko\Proton\Models\RememberToken;
 use Rsgrinko\Proton\Models\Role;
 use Rsgrinko\Proton\Models\User;
 use Rsgrinko\Proton\RateLimit\RateLimiter;
+use Rsgrinko\Proton\Support\Config;
 
 test('пароль: короткий не принимается, хеш проверяется', function (): void {
     assertNotNull(Password::check('123'), 'слишком короткий пароль');
@@ -231,4 +233,36 @@ test('шифрование: значение возвращается, подп�
 
     assertTrue(Crypto::verify('данные', $signature));
     assertFalse(Crypto::verify('другие данные', $signature));
+});
+
+test('токен форм: подписанная кука годится только в своём браузере', function (): void {
+    $name     = (string) Config::get('auth.cookie_prefix', 'proton') . '_form';
+    $remember = Auth::rememberCookieName();
+    $token    = str_repeat('ab', 16);
+    $saved    = $_COOKIE;
+
+    try {
+        // Кука выдана браузеру с долгой кукой «sel1» — там она и работает
+        $_COOKIE[$remember] = 'sel1:секрет';
+        $_COOKIE[$name]     = $token . '.' . Crypto::sign($token . '|sel1');
+
+        Csrf::forget();
+        Auth::forget();
+
+        assertSame($token, Csrf::token(), 'свой браузер получает токен обратно');
+
+        // Та же кука, подброшенная в браузер с другим «запомнить меня», не подходит:
+        // атакующий получил её, просто зайдя на сайт, а селектора жертвы не знает
+        $_COOKIE[$remember] = 'sel2:секрет';
+
+        Csrf::forget();
+        Auth::forget();
+
+        assertFalse(Csrf::token() === $token, 'чужая подписанная кука не должна поднять токен');
+    } finally {
+        $_COOKIE = $saved;
+
+        Csrf::forget();
+        Auth::forget();
+    }
 });

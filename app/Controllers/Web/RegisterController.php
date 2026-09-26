@@ -16,6 +16,7 @@ use Rsgrinko\Proton\Models\Role;
 use Rsgrinko\Proton\Models\User;
 use Rsgrinko\Proton\Support\Audit;
 use Rsgrinko\Proton\Support\Config;
+use Rsgrinko\Proton\Support\Logger;
 use Rsgrinko\Proton\View\View;
 
 /**
@@ -58,13 +59,15 @@ final class RegisterController extends Controller
             'password' => 'Пароль',
         ]);
 
-        // Обычная роль: администратора выдаёт только другой администратор
-        $role = Role::query()->where('is_system', 0)->first();
+        // Роль задана настройкой и проверена на отсутствие прав управления
+        // (Role::forRegistration()); allowed() выше уже убедился, что она есть
+        /** @var Role $role */
+        $role = Role::forRegistration();
 
         $user = User::register((string) $data['login'], (string) $data['password'], [
             'email'   => (string) $data['email'],
             'name'    => (string) ($data['name'] ?? $data['login']),
-            'role_id' => $role?->id() ?? 0,
+            'role_id' => $role->id(),
         ]);
 
         Audit::created('user', $user->id(), 'регистрация: ' . $user->login);
@@ -135,9 +138,26 @@ final class RegisterController extends Controller
             ->queue();
     }
 
+    /**
+     * Открыта ли регистрация. Нет годной роли для новичков — закрыта, даже если
+     * AUTH_REGISTRATION включён: выдать без роли или с правами управления
+     * хуже, чем не пустить. Причина — в логе и в состоянии сервиса.
+     */
     private function allowed(): bool
     {
-        return (bool) Config::get('auth.registration', true);
+        if (!(bool) Config::get('auth.registration', true)) {
+            return false;
+        }
+
+        $problem = Role::registrationProblem();
+
+        if ($problem !== '') {
+            (new Logger('app'))->error('Регистрация закрыта: ' . $problem);
+
+            return false;
+        }
+
+        return true;
     }
 
     private function verifyRequired(): bool
