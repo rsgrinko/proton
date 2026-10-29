@@ -224,3 +224,18 @@ test('роли: у встроенной роли права берутся из 
     assertTrue(in_array('data.all', $admin->permissions(), true), 'администратор видит чужие записи');
     assertTrue(in_array('notes.view', $admin->permissions(), true), 'право приложения тоже должно попасть');
 });
+
+test('модель: pluck() у запроса модели отдаёт значения, а не падает на моделях', function (): void {
+    withOwnDatabase(static function (): void {
+        $note = new Note();
+        $note->forceFill(['user_id' => 1, 'title' => 'Для pluck'])->save();
+
+        assertSame(['Для pluck'], Note::query()->where('id', $note->id())->pluck('title'));
+        assertSame([(string) $note->id() => 'Для pluck'], Note::query()->where('id', $note->id())->pluck('title', 'id'));
+
+        // Мягко удалённая запись в pluck() не попадает — как и в get()
+        $note->delete();
+
+        assertSame([], Note::query()->where('id', $note->id())->pluck('title'));
+    });
+});

@@ -457,6 +457,18 @@ class Builder
     }
 
     /**
+     * Строки результата массивами. У построителя это то же, что get(); запрос
+     * модели (Model\Query) переопределяет get() под модели, а rows() оставляет
+     * строками — на нём и держатся pluck() и подобные.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function rows(): array
+    {
+        return $this->get();
+    }
+
+    /**
      * Плоский список значений колонки, при желании с ключами.
      *
      * @return array<int|string, mixed>
@@ -465,7 +477,9 @@ class Builder
     {
         $query = clone $this;
 
-        $rows   = $key === null ? $query->select($column)->get() : $query->select($key, $column)->get();
+        // rows(), а не get(): у запроса модели get() отдаёт модели, а здесь
+        // нужны строки — иначе pluck() у Note::query() падал бы на первой
+        $rows   = $key === null ? $query->select($column)->rows() : $query->select($key, $column)->rows();
         $result = [];
 
         foreach ($rows as $row) {

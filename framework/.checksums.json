@@ -94,7 +94,7 @@
     "framework/Database/Model/Relations/HasMany.php": "844d540049e591b3e5f31563c50e991b6b6d5dcbbab9ed29957b90303e0ef5dc",
     "framework/Database/Model/Relations/HasOne.php": "52e8050b36848be910b5f5021b35e1f42352dc6d1cd311afac28907ea30a4939",
     "framework/Database/Model/Relations/Relation.php": "c60f71943dfaaa6876ca7ee12b766a715a9413a1ba00de09e5f166dd93a05e54",
-    "framework/Database/Query/Builder.php": "cf40ea0676857341dc56feb145867034152d418df976fb1f57fdf3de992df9c2",
+    "framework/Database/Query/Builder.php": "04f0f5eab9b14131921f99d6b1b74f0caa05da56a2e49a7d794caade62e480ef",
     "framework/Database/Schema/Blueprint.php": "9eff0a5446ac3b1a95441608f96caf376dd8e5eb8fd803fdd0bb77b70082b7a2",
     "framework/Database/Schema/Builder.php": "2f4d7a58cc7d14b19a1d9855370d8aca5eae0ee644ef37eedc2e0aa87c73509a",
     "framework/Database/Schema/Column.php": "dc1de17ded3188aabbdb0d33a8facd7c189342abcf6d00a52f144c50cb23c88d",
