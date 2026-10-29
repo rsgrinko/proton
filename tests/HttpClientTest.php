@@ -330,3 +330,50 @@ test('HttpClient: свой файл корневых сертификатов р
         stopFakeHttps($server);
     }
 });
+
+test('HttpClient: без прокси — напрямую, http_proxy из окружения не подхватывается', function (): void {
+    if (!function_exists('curl_init')) {
+        skipTest('нет curl');
+    }
+
+    $token    = bin2hex(random_bytes(4));
+    $portFile = APP_ROOT . '/var/tmp/direct-test-port-' . $token . '.txt';
+    $logFile  = APP_ROOT . '/var/tmp/direct-test-log-' . $token . '.json';
+
+    // Игрушечный прокси здесь просто HTTP-сервер: отвечает на любой запрос
+    $process = proc_open(['php', APP_ROOT . '/tests/support/fake_proxy_server.php', $portFile, $logFile, 'http'], [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
+    $saved   = ['http_proxy' => getenv('http_proxy'), 'HTTP_PROXY' => getenv('HTTP_PROXY'), 'no_proxy' => getenv('no_proxy'), 'NO_PROXY' => getenv('NO_PROXY')];
+
+    try {
+        $deadline = microtime(true) + 10;
+
+        while (!is_file($portFile) && microtime(true) < $deadline) {
+            usleep(10000);
+        }
+
+        // Прокси из окружения — закрытый порт: пошёл бы через него — упал бы
+        putenv('http_proxy=http://127.0.0.1:9');
+        putenv('HTTP_PROXY=http://127.0.0.1:9');
+        putenv('no_proxy');
+        putenv('NO_PROXY');
+
+        $response = (new HttpClient(5))->get('http://127.0.0.1:' . trim((string) file_get_contents($portFile)) . '/direct');
+        $report   = json_decode((string) @file_get_contents($logFile), true);
+
+        assertSame(200, $response['status']);
+        assertSame('GET /direct HTTP/1.1', $report['request_line'] ?? '', 'запрос пришёл напрямую, а не как к прокси');
+    } finally {
+        foreach ($saved as $name => $value) {
+            putenv($value === false ? $name : $name . '=' . $value);
+        }
+
+        foreach ($pipes as $pipe) {
+            @fclose($pipe);
+        }
+
+        @proc_terminate($process);
+        @proc_close($process);
+        @unlink($portFile);
+        @unlink($logFile);
+    }
+});
