@@ -51,14 +51,17 @@ $GLOBALS['test_options'] = $options;
 // тесты, которые нарочно роняют базу, подмешивают свои ошибки в рабочий журнал
 // Окружение — testing: приложение по нему отключает то, чему в тестах не место
 // (своё расписание с задачами в очередь, отправку наружу)
-Config::set('app.env', 'testing');
-Config::set('log.level', 'error');
-Config::set('paths.log', APP_ROOT . '/var/log/tests');
-Config::set('paths.cache', APP_ROOT . '/var/tmp/cache-tests');
-Config::set('paths.storage', APP_ROOT . '/var/tmp/storage-tests');
-Config::set('mail.driver', 'null');
-Config::set('mail.from_email', 'tests@example.com');
-Config::set('app.key', 'base64:' . base64_encode(str_repeat('t', 32)));
+$testConfig = static function (): void {
+    Config::set('app.env', 'testing');
+    Config::set('log.level', 'error');
+    Config::set('paths.log', APP_ROOT . '/var/log/tests');
+    Config::set('paths.cache', APP_ROOT . '/var/tmp/cache-tests');
+    Config::set('paths.storage', APP_ROOT . '/var/tmp/storage-tests');
+    Config::set('mail.driver', 'null');
+    Config::set('mail.from_email', 'tests@example.com');
+    Config::set('app.key', 'base64:' . base64_encode(str_repeat('t', 32)));
+};
+$testConfig();
 
 /**
  * Настройки базы для тестов.
@@ -153,6 +156,15 @@ if ($testSettings['driver'] === 'mysql') {
 }
 
 (new Migrator())->run();
+
+// bootstrap.php уже наложил настройки панели из рабочей базы — до того, как
+// прогон получил свою. Без перечитывания тесты жили с боевыми галочками:
+// закрытая в панели регистрация роняла тест страниц гостя, боевой пароль SMTP
+// не расшифровывался тестовым ключом (500 на /admin/settings), каналы
+// уведомлений слали тестовые сообщения наружу. refresh() вернёт перекрытые
+// ключи к .env, поэтому принудительные значения прогона — заново
+Settings::refresh();
+$testConfig();
 
 /**
  * Сносит все таблицы: прогон должен начинаться с чистой схемы.
