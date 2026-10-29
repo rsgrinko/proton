@@ -293,5 +293,7 @@ return [
         'tmp'     => APP_ROOT . '/var/tmp',
         'cache'   => APP_ROOT . '/var/cache',
         'storage' => APP_ROOT . '/var/storage',
+        // Флаги остановки демонов (DaemonCommand, php bin/proton daemon:stop)
+        'daemon'  => APP_ROOT . '/var/daemon',
     ],
 ];

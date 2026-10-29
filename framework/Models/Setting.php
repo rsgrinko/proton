@@ -42,20 +42,10 @@ final class Setting
             return;
         }
 
-        // Имена параметров не повторяем: MySQL идёт без эмуляции подготовленных выражений
-        $sql = $db->isSqlite()
-            ? 'INSERT INTO settings (setting_key, value, updated_at) VALUES (:key, :value, :now)
-               ON CONFLICT (setting_key) DO UPDATE SET value = :value_upd, updated_at = :now_upd'
-            : 'INSERT INTO settings (setting_key, value, updated_at) VALUES (:key, :value, :now)
-               ON DUPLICATE KEY UPDATE value = :value_upd, updated_at = :now_upd';
-
-        $db->execute($sql, [
-            'key'       => $key,
-            'value'     => $value,
-            'now'       => Connection::now(),
-            'value_upd' => $value,
-            'now_upd'   => Connection::now(),
-        ]);
+        $db->table('settings')->upsert(
+            ['setting_key' => $key, 'value' => $value, 'updated_at' => Connection::now()],
+            ['setting_key']
+        );
     }
 
     public static function forget(string $key): void

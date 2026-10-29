@@ -40,6 +40,33 @@ final class DeliverWebhookJob extends Job
 
 Заготовку делает генератор: `php bin/proton make:job ReportJob`.
 
+Зависимости задача просит в конструкторе — воркер собирает её контейнером, как
+контроллер (интерфейсы — через `config/services.php`):
+
+```php
+final class SyncRatesJob extends Job
+{
+    public function __construct(private readonly RatesProvider $rates)
+    {
+    }
+
+    public function handle(array $payload): void
+    {
+        $this->rates->sync();
+    }
+}
+```
+
+Поставить такую задачу можно и там, где зависимость не собирается: `Queue::push()`
+спрашивает `attempts()`, `queue()` и `priority()` у объекта без конструктора. Поэтому
+эти методы и `timeout()` не должны опираться на то, что делает конструктор. Задача,
+которая не собралась в воркере (нет привязки, база моргнула), считается упавшей
+и повторяется по обычным попыткам.
+
+Настройки из панели воркер перечитывает перед каждой задачей
+(`Settings::refresh()`), перезапуск ради них не нужен — подробности
+в [SETTINGS.md](SETTINGS.md).
+
 Статусы задачи: `queued` -> `running` -> `done` | `failed`. Упавшая задача
 возвращается в `queued` с отложенным `available_at`, пока не кончились попытки;
 после этого — `failed` и вызов `failed()`.

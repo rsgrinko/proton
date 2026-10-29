@@ -6,6 +6,9 @@
 не бесплатна, нужно что-то доделать руками на стороне проекта. Подробности
 механизма — `docs/CORE_UPDATES.md`.
 
+## 1.4.0
+- HttpClient: прокси http/socks5 вторым аргументом, fake() со списком ответов и функцией; задачи очереди и команды собирает контейнер (зависимости в конструкторе); Settings::refresh() — воркер перед задачей и расписанием, демон перед кругом; Settings::FLOAT и Env::float(); Console\DaemonCommand и daemon:stop; Query\Builder::upsert() и whereDate()
+
 ## 1.3.0
 - Models\Invitation — приглашения с ролью (миграция create_invitations, контроллеры и вьюхи — в скелете приложения); User::preloadAvatars() и currentAvatar(): аватары списка одним запросом; настройка auth.invite_days (AUTH_INVITE_DAYS)
 

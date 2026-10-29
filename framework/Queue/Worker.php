@@ -18,11 +18,13 @@ use Rsgrinko\Proton\Models\WebhookDelivery;
 use Rsgrinko\Proton\Notifications\Notify;
 use Rsgrinko\Proton\RateLimit\RateLimiter;
 use Rsgrinko\Proton\Support\Config;
+use Rsgrinko\Proton\Support\Container;
 use Rsgrinko\Proton\Support\ExportFile;
 use Rsgrinko\Proton\Support\Logger;
 use Rsgrinko\Proton\Support\Profiler;
 use Rsgrinko\Proton\Support\Trash;
 use Rsgrinko\Proton\Support\RequestId;
+use Rsgrinko\Proton\Support\Settings;
 use Throwable;
 
 /**
@@ -37,6 +39,9 @@ final class Worker
 {
     /** Ключ в settings, по которому воркеру говорят «выйди» */
     public const RESTART_KEY = 'worker:restart';
+
+    /** Пауза перед повтором задачи, которую не удалось собрать, сек */
+    private const BUILD_BACKOFF = 60;
 
     private Logger $logger;
 
@@ -186,8 +191,23 @@ final class Worker
             return false;
         }
 
-        /** @var Job $job */
-        $job = new $class();
+        // Правка из панели должна доехать до задачи без перезапуска воркера —
+        // это один SELECT по settings, на фоне самой задачи он незаметен
+        Settings::refresh();
+
+        // Зависимости из конструктора подставляет контейнер, как контроллерам.
+        // Не собралась — это сбой окружения (база моргнула, нет привязки), а не
+        // конец задачи: повторим, как любую упавшую, по обычным попыткам
+        try {
+            /** @var Job $job */
+            $job = Container::instance()->make($class);
+        } catch (Throwable $e) {
+            $again = Queue::fail($row, 'Задача не собралась: ' . $e->getMessage(), self::BUILD_BACKOFF);
+
+            $this->logger->error('Задача не собралась', ['id' => $row['id'], 'job' => $class, 'again' => $again, 'error' => $e->getMessage()]);
+
+            return false;
+        }
 
         // Своя пачка запросов на каждую задачу: иначе счётчик копится
         // с предыдущей и цифры ничего не значат
@@ -270,6 +290,9 @@ final class Worker
 
         try {
             $last = (int) Setting::get('worker:maintenance', '0');
+
+            // Расписание тоже читает настройки: время запуска, включён ли раздел
+            Settings::refresh();
 
             if (time() - $last < $interval) {
                 // Расписание проверяем чаще уборки: у задач может быть свой минутный шаг

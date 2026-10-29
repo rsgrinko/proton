@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Rsgrinko\Proton\Queue;
 
+use ReflectionClass;
 use Rsgrinko\Proton\Database\Connection;
+use Rsgrinko\Proton\Support\Container;
 use Rsgrinko\Proton\Support\ProtonException;
 use Rsgrinko\Proton\Support\RequestId;
 
@@ -51,8 +53,9 @@ final class Queue
             throw new ProtonException('Задача ' . $job . ' не унаследована от ' . Job::class);
         }
 
-        /** @var Job $instance */
-        $instance = new $job();
+        // Очередь, важность и попытки — свойства класса, а не собранного объекта:
+        // задачу с зависимостями в конструкторе незачем собирать ради постановки
+        $instance = self::prototype($job);
 
         return Connection::instance()->insert('jobs', [
             'queue'        => $queue ?? $instance->queue(),
@@ -323,7 +326,8 @@ final class Queue
                 $payload = json_decode((string) $row['payload'], true);
 
                 try {
-                    $job->failed(is_array($payload) ? $payload : [], $error);
+                    // failed() уже может понадобиться зависимость — собираем по-настоящему
+                    Container::instance()->make($job::class)->failed(is_array($payload) ? $payload : [], $error);
                 } catch (\Throwable) {
                     // Обработчик отказа не должен мешать разбирать остальные
                 }
@@ -334,7 +338,7 @@ final class Queue
     }
 
     /**
-     * Объект задачи по имени класса или null, если класса больше нет.
+     * Заготовка задачи по имени класса или null, если класса больше нет.
      */
     private static function instantiate(string $class): ?Job
     {
@@ -342,7 +346,23 @@ final class Queue
             return null;
         }
 
-        return new $class();
+        return self::prototype($class);
+    }
+
+    /**
+     * Объект задачи без конструктора — только спросить attempts(), queue(),
+     * priority(), timeout(). Поэтому эти методы не должны опираться на то, что
+     * делает конструктор: зависимости задачи подставляет контейнер уже
+     * в воркере, перед handle().
+     *
+     * @param class-string<Job> $class
+     */
+    private static function prototype(string $class): Job
+    {
+        /** @var Job $job */
+        $job = (new ReflectionClass($class))->newInstanceWithoutConstructor();
+
+        return $job;
     }
 
     /**

@@ -59,6 +59,30 @@ $db->table('users')->where(function (Builder $query): void {
 чего-то стоит), `paginate`, `chunk`, `cursor`, `pluck`, `count`, `sum`, `max`, `exists`,
 `increment`, `insert`, `update`, `delete`.
 
+**По дню, без времени** — `whereDate()`. Внутри не `DATE(колонка)`, а диапазон
+`[день, следующий день)`: функция над колонкой выключила бы индекс. Годится и для
+`dateTime`, и для `date`:
+
+```php
+$db->table('reports')->whereDate('created_at', '=', date('Y-m-d'))->exists();   // есть ли за сегодня
+$db->table('reports')->whereDate('created_at', '>=', new DateTimeImmutable('-7 days'))->count();
+```
+
+**Вставить или обновить** — `upsert()`, одним запросом, без гонки «проверил —
+вставил» между двумя процессами:
+
+```php
+$db->table('counters')->upsert(['name' => 'visits', 'value' => 5], ['name']);         // обновить всё, кроме ключа
+$db->table('rates')->upsert([$row1, $row2], ['pair', 'day'], ['rate']);                 // пачкой, только rate
+$db->table('flags')->upsert(['name' => 'seen', 'value' => '1'], ['name'], []);         // есть — не трогать
+```
+
+По колонкам ключа в таблице обязан быть `PRIMARY KEY` или `UNIQUE`: SQLite без него
+запрос не примет, а MySQL смотрит на любой уникальный ключ таблицы, не на второй
+аргумент. Число затронутых строк базы считают по-разному (MySQL за обновление даёт 2),
+отличать по нему вставку от обновления нельзя. Нужен прирост, а не замена
+(`hits = hits + 1`), — это `firstOrCreate()` и `increment()` в транзакции.
+
 Три правила, на которых всё держится:
 
 - **значения всегда уходят параметрами**, имена таблиц и колонок сверяются регуляркой —

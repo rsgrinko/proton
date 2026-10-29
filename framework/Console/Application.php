@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Rsgrinko\Proton\Console;
 
+use ReflectionClass;
 use Rsgrinko\Proton\Support\Config;
+use Rsgrinko\Proton\Support\Container;
 use Rsgrinko\Proton\Support\Settings;
 use Throwable;
 
@@ -54,6 +56,7 @@ final class Application
         'Очередь и расписание' => [
             Commands\WorkerCommand::class,
             Commands\WorkerRestartCommand::class,
+            Commands\DaemonStopCommand::class,
             Commands\ScheduleRunCommand::class,
             Commands\QueueStatusCommand::class,
             Commands\QueueRetryCommand::class,
@@ -139,7 +142,7 @@ final class Application
     }
 
     /**
-     * Все команды — нужно справке и тестам.
+     * Все команды — нужно тестам. Собираются контейнером, со всеми зависимостями.
      *
      * @return array<int, Command>
      */
@@ -149,11 +152,30 @@ final class Application
 
         foreach (self::groups() as $group) {
             foreach ($group as $class) {
-                $commands[] = new $class();
+                $commands[] = Container::instance()->make($class);
             }
         }
 
         return $commands;
+    }
+
+    /**
+     * Команда без конструктора — только спросить имя, вызов и описание.
+     *
+     * Справка и поиск по имени перебирают все команды, а собирать каждую со
+     * всеми зависимостями ради строки в справке незачем: зависимость может
+     * ходить в сеть или в базу, а то и не собраться вовсе на машине, где эта
+     * команда не нужна. Поэтому name(), usage() и description() не должны
+     * опираться на то, что делает конструктор.
+     *
+     * @param class-string<Command> $class
+     */
+    public static function describe(string $class): Command
+    {
+        /** @var Command $command */
+        $command = (new ReflectionClass($class))->newInstanceWithoutConstructor();
+
+        return $command;
     }
 
     /**
@@ -179,11 +201,17 @@ final class Application
         return $groups;
     }
 
+    /**
+     * Находит команду по имени и собирает только её: зависимости из
+     * конструктора подставляет контейнер, как контроллерам.
+     */
     private function find(string $name): ?Command
     {
-        foreach (self::commands() as $command) {
-            if ($command->name() === $name) {
-                return $command;
+        foreach (self::groups() as $group) {
+            foreach ($group as $class) {
+                if (self::describe($class)->name() === $name) {
+                    return Container::instance()->make($class);
+                }
             }
         }
 
@@ -201,8 +229,7 @@ final class Application
             $this->line($title . ':');
 
             foreach ($classes as $class) {
-                /** @var Command $command */
-                $command = new $class();
+                $command = self::describe($class);
 
                 $usage = $command->usage();
 

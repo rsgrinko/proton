@@ -26,8 +26,10 @@ use Throwable;
  *     Settings::register('shop.currency', 'Валюта', Settings::STRING, 'Магазин');
  *
  * Настройки применяются один раз за процесс — `Settings::apply()` зовёт ядро
- * (веб) и консоль. Долгоживущему воркеру правку подхватит перезапуск: он и так
- * нужен после выкладки кода.
+ * (веб) и консоль. Долгоживущие процессы перечитывают их сами через
+ * `Settings::refresh()`: воркер — перед каждой задачей и расписанием,
+ * DaemonCommand — перед каждым кругом. Перезапуск нужен только после выкладки
+ * кода и правки `.env`.
  */
 final class Settings
 {
@@ -35,6 +37,8 @@ final class Settings
     public const STRING = 'string';
     public const TEXT   = 'text';
     public const INT    = 'int';
+    /** Дробное число: в панели можно вводить и через точку, и через запятую */
+    public const FLOAT  = 'float';
     public const BOOL   = 'bool';
     public const SELECT = 'select';
     public const SECRET = 'secret';
@@ -192,6 +196,9 @@ final class Settings
 
     private static bool $applied = false;
 
+    /** @var array<string, true> Какие ключи конфигурации сейчас перекрыты значением из базы */
+    private static array $overlay = [];
+
     /**
      * Добавить свою настройку. Зовётся из config/settings.php при старте.
      *
@@ -271,10 +278,59 @@ final class Settings
             foreach (self::stored() as $key => $value) {
                 if (self::known($key)) {
                     Config::set($key, self::cast($key, $value));
+
+                    self::$overlay[$key] = true;
                 }
             }
         } catch (Throwable $e) {
             (new Logger('app'))->warning('Настройки из базы не применились', ['error' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Перечитывает значения из базы — для долгоживущих процессов. Воркер зовёт
+     * его перед каждой задачей и перед расписанием, DaemonCommand — перед
+     * каждым кругом: правка в панели доходит без перезапуска.
+     *
+     * Сброшенная в панели настройка (значения в базе больше нет) возвращается
+     * к `.env` — так же, как при forget(). Правку самого `.env` это не
+     * подхватывает: он прочитан при старте, тут нужен перезапуск.
+     *
+     * Объект, который при сборке переписал настройку в своё свойство (singleton
+     * из config/services.php), так и останется со старым значением — читать
+     * настройку нужно там, где она нужна, через Config::get().
+     *
+     * База недоступна — остаётся то, что было применено прошлый раз.
+     */
+    public static function refresh(): void
+    {
+        $previous    = self::$cache;
+        self::$cache = null;
+
+        try {
+            $stored = self::stored();
+
+            foreach (array_keys(self::$overlay) as $key) {
+                if (!array_key_exists($key, $stored)) {
+                    Config::set($key, self::envValue($key));
+
+                    unset(self::$overlay[$key]);
+                }
+            }
+
+            foreach ($stored as $key => $value) {
+                if (self::known($key)) {
+                    Config::set($key, self::cast($key, $value));
+
+                    self::$overlay[$key] = true;
+                }
+            }
+
+            self::$applied = true;
+        } catch (Throwable $e) {
+            self::$cache = $previous;
+
+            (new Logger('app'))->warning('Настройки из базы не перечитались', ['error' => $e->getMessage()]);
         }
     }
 
@@ -316,6 +372,8 @@ final class Settings
         self::$cache = null;
 
         Config::set($key, self::cast($key, $raw));
+
+        self::$overlay[$key] = true;
     }
 
     /**
@@ -329,6 +387,8 @@ final class Settings
 
         // Значение из .env читаем заново: в Config лежит то, что перекрыли
         Config::set($key, self::envValue($key));
+
+        unset(self::$overlay[$key]);
     }
 
     /**
@@ -346,6 +406,7 @@ final class Settings
 
         return match ($item['type']) {
             self::INT    => preg_match('/^-?\d+$/', $text) === 1 ? '' : 'Нужно целое число',
+            self::FLOAT  => preg_match('/^-?\d+([.,]\d+)?$/', $text) === 1 ? '' : 'Нужно число, например 0.7',
             self::SELECT => array_key_exists($text, $item['options'] ?? []) ? '' : 'Значение не из списка',
             default      => '',
         };
@@ -441,6 +502,7 @@ final class Settings
         self::$groups  = null;
         self::$cache   = null;
         self::$applied = false;
+        self::$overlay = [];
     }
 
     /** @var array<string, string>|null Значения из базы, прочитанные один раз */
@@ -477,6 +539,7 @@ final class Settings
 
         return match ($item['type'] ?? self::STRING) {
             self::INT    => (int) $value,
+            self::FLOAT  => (float) $value,
             self::BOOL   => $value === '1',
             self::SECRET => Crypto::decrypt($value),
             default      => $value,
@@ -492,6 +555,11 @@ final class Settings
 
         if (($item['type'] ?? self::STRING) === self::BOOL) {
             return $value === true || $value === 1 || $value === '1' || $value === 'on' ? '1' : '0';
+        }
+
+        // В базе — всегда с точкой: (float) '0,7' дал бы ноль
+        if (($item['type'] ?? self::STRING) === self::FLOAT) {
+            return str_replace(',', '.', trim((string) $value));
         }
 
         return (string) $value;

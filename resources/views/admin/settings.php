@@ -83,6 +83,9 @@ $canManage = View::can(Permission::SETTINGS_MANAGE);
                             <input type="password" name="settings[<?= View::e($key) ?>]" value="<?= View::e((string) $value) ?>" autocomplete="off">
                         <?php } elseif ($item['type'] === Settings::INT) { ?>
                             <input type="number" name="settings[<?= View::e($key) ?>]" value="<?= View::e((string) $value) ?>">
+                        <?php } elseif ($item['type'] === Settings::FLOAT) { ?>
+                            <?php // Не number: он не примет «0,7» в русской раскладке ?>
+                            <input type="text" inputmode="decimal" name="settings[<?= View::e($key) ?>]" value="<?= View::e((string) $value) ?>">
                         <?php } else { ?>
                             <input type="text" name="settings[<?= View::e($key) ?>]" value="<?= View::e((string) $value) ?>">
                         <?php } ?>

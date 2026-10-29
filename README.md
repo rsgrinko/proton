@@ -203,6 +203,7 @@ bin/proton            консоль
 php bin/proton down [--message=] [--allow=] [--retry=] | up
 php bin/proton migrate | migrate:status | migrate:rollback
 php bin/proton worker [--once] [--queue=default,webhooks] | worker:restart | schedule:run
+php bin/proton daemon:stop <имя>
 php bin/proton queue:status | queue:retry | queue:purge
 php bin/proton user:create | user:list | user:password | role:list
 php bin/proton key:create | key:list | key:revoke

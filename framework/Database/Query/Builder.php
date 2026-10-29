@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Rsgrinko\Proton\Database\Query;
 
 use Closure;
+use DateTimeImmutable;
+use DateTimeInterface;
 use Generator;
 use Rsgrinko\Proton\Cache\Cache;
 use Rsgrinko\Proton\Database\Connection;
@@ -213,6 +215,46 @@ class Builder
             'sql'     => $this->name($column) . ' BETWEEN ' . $this->bind($from) . ' AND ' . $this->bind($to),
             'boolean' => $boolean,
         ];
+
+        return $this;
+    }
+
+    /**
+     * Сравнение по дню, без времени: `->whereDate('created_at', '=', '2026-10-29')`
+     * или с объектом даты. Годится и для dateTime, и для date.
+     *
+     * Через DATE(колонка) не делаем нарочно: функция над колонкой выключает
+     * индекс, и «записи за сегодня» превращаются в обход всей таблицы. Вместо
+     * этого день разворачивается в диапазон [день, следующий день) — индекс
+     * работает, и SQL одинаковый для обеих баз. Границы — голые даты без
+     * времени: в SQLite даты лежат текстом, и '2026-10-29' меньше, чем
+     * '2026-10-29 00:00:00', — граница со временем потеряла бы колонки date.
+     */
+    public function whereDate(string $column, string $operator, string|DateTimeInterface $date, string $boolean = 'AND'): static
+    {
+        $day = $date instanceof DateTimeInterface
+            ? DateTimeImmutable::createFromInterface($date)->setTime(0, 0)
+            : DateTimeImmutable::createFromFormat('!Y-m-d', $date);
+
+        if ($day === false || (is_string($date) && $day->format('Y-m-d') !== $date)) {
+            throw new DatabaseException('Дата для whereDate() — в виде ГГГГ-ММ-ДД: ' . (string) (is_string($date) ? $date : ''));
+        }
+
+        $column = $this->name($column);
+        $from   = $day->format('Y-m-d');
+        $next   = $day->modify('+1 day')->format('Y-m-d');
+
+        $sql = match (trim($operator)) {
+            '='        => $column . ' >= ' . $this->bind($from) . ' AND ' . $column . ' < ' . $this->bind($next),
+            '<>', '!=' => '(' . $column . ' < ' . $this->bind($from) . ' OR ' . $column . ' >= ' . $this->bind($next) . ')',
+            '<'        => $column . ' < ' . $this->bind($from),
+            '<='       => $column . ' < ' . $this->bind($next),
+            '>'        => $column . ' >= ' . $this->bind($next),
+            '>='       => $column . ' >= ' . $this->bind($from),
+            default    => throw new DatabaseException('Недопустимый оператор для whereDate(): ' . $operator),
+        };
+
+        $this->wheres[] = ['type' => 'basic', 'sql' => '(' . $sql . ')', 'boolean' => $boolean];
 
         return $this;
     }
@@ -555,6 +597,90 @@ class Builder
     public function insert(array $data): int
     {
         return $this->db->insert($this->table, $data);
+    }
+
+    /**
+     * Вставить или обновить: строка с тем же уникальным ключом уже есть —
+     * перезаписываются колонки $update, нет — вставляется новая. Одним
+     * запросом, без гонки «проверил — вставил» между двумя процессами.
+     *
+     *     $db->table('counters')->upsert(['name' => 'visits', 'value' => 5], ['name']);
+     *     $db->table('rates')->upsert([$row1, $row2], ['pair', 'day'], ['rate']);
+     *
+     * $uniqueBy — колонки, по которым строка считается той же самой. По ним
+     * в таблице обязан быть PRIMARY KEY или UNIQUE: SQLite без него запрос не
+     * примет, а MySQL смотрит не на $uniqueBy, а на любой уникальный ключ
+     * таблицы. $update по умолчанию — все колонки, кроме $uniqueBy; пустой
+     * список — «есть, так не трогать».
+     *
+     * Новое значение берётся из самой вставляемой строки (excluded.* в SQLite,
+     * VALUES() в MySQL), поэтому каждый параметр встречается в запросе один раз.
+     * VALUES() в MySQL 8.0.20+ объявлен устаревшим, но работает, а синтаксис
+     * с псевдонимом строки не знают MySQL до 8.0.19 и MariaDB.
+     *
+     * Возвращает число затронутых строк, и считают его базы по-разному (MySQL
+     * за обновление даёт 2, за неизменившуюся строку — 0) — полагаться на
+     * него, чтобы отличить вставку от обновления, нельзя.
+     *
+     * @param array<string, mixed>|array<int, array<string, mixed>> $values
+     * @param array<int, string>                                    $uniqueBy
+     * @param array<int, string>|null                               $update
+     */
+    public function upsert(array $values, array $uniqueBy, ?array $update = null): int
+    {
+        if ($values === []) {
+            return 0;
+        }
+
+        $rows    = array_is_list($values) ? $values : [$values];
+        $columns = array_map(fn (string $column): string => $this->name($column), array_keys($rows[0]));
+
+        if ($uniqueBy === [] || array_diff($uniqueBy, $columns) !== []) {
+            throw new DatabaseException('upsert(): колонки ключа должны быть среди вставляемых');
+        }
+
+        $update ??= array_values(array_diff($columns, $uniqueBy));
+
+        // Параметры свои, а не накопленные построителем: условия where() к вставке
+        // отношения не имеют, а лишний параметр MySQL без эмуляции не примет
+        $params = [];
+        $tuples = [];
+
+        foreach ($rows as $row) {
+            if (array_keys($row) !== array_keys($rows[0])) {
+                throw new DatabaseException('upsert(): у всех строк должны быть одни и те же колонки в одном порядке');
+            }
+
+            $placeholders = [];
+
+            foreach (array_values($row) as $value) {
+                $name           = 'u' . count($params);
+                $params[$name]  = $value;
+                $placeholders[] = ':' . $name;
+            }
+
+            $tuples[] = '(' . implode(', ', $placeholders) . ')';
+        }
+
+        $sql = 'INSERT INTO ' . $this->table . ' (' . implode(', ', $columns) . ') VALUES ' . implode(', ', $tuples);
+
+        if ($this->db->isSqlite()) {
+            $set = array_map(fn (string $column): string => $this->name($column) . ' = excluded.' . $this->name($column), $update);
+
+            $sql .= ' ON CONFLICT (' . implode(', ', array_map($this->name(...), $uniqueBy)) . ')'
+                . ($set === [] ? ' DO NOTHING' : ' DO UPDATE SET ' . implode(', ', $set));
+        } else {
+            $set = array_map(fn (string $column): string => $this->name($column) . ' = VALUES(' . $this->name($column) . ')', $update);
+
+            // Обновлять нечего — присваиваем ключ самому себе: так MySQL
+            // молча пропускает дубль, не превращая его в ошибку, как INSERT IGNORE
+            // превратил бы в тишину и все прочие ошибки строки
+            $sql .= ' ON DUPLICATE KEY UPDATE ' . ($set === []
+                ? $this->name($uniqueBy[0]) . ' = ' . $this->name($uniqueBy[0])
+                : implode(', ', $set));
+        }
+
+        return $this->db->execute($sql, $params);
     }
 
     /**

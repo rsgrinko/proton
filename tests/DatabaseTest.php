@@ -169,3 +169,117 @@ test('база: знает о своих таблицах, колонках и �
     assertFalse($db->hasColumn('users', 'колонки_такой_нет'));
     assertTrue($db->hasIndex('users', 'idx_users_login'));
 });
+
+/**
+ * Своя таблица на время теста: ключ-значение и записи с датами.
+ */
+function withScratchTables(callable $body): void
+{
+    withOwnDatabase(static function (Connection $db) use ($body): void {
+        $schema = new Rsgrinko\Proton\Database\Schema\Builder($db);
+
+        $schema->create('test_pairs', static function (Rsgrinko\Proton\Database\Schema\Blueprint $table): void {
+            $table->string('pair_key', 64)->primary();
+            $table->string('value', 64);
+            $table->integer('hits')->default(0);
+        });
+
+        $schema->create('test_events', static function (Rsgrinko\Proton\Database\Schema\Blueprint $table): void {
+            $table->id();
+            $table->dateTime('happened_at');
+            $table->date('happened_on');
+            $table->index('idx_test_events_happened_at', 'happened_at');
+        });
+
+        $body($db);
+    });
+}
+
+test('построитель: upsert вставляет новую строку и перезаписывает существующую', function (): void {
+    withScratchTables(static function (Connection $db): void {
+        $db->table('test_pairs')->upsert(['pair_key' => 'a', 'value' => 'раз', 'hits' => 1], ['pair_key']);
+        $db->table('test_pairs')->upsert(['pair_key' => 'a', 'value' => 'два', 'hits' => 5], ['pair_key']);
+
+        $rows = $db->select('SELECT * FROM test_pairs');
+
+        assertCount(1, $rows, 'строка с тем же ключом не задвоилась');
+        assertSame('два', (string) $rows[0]['value']);
+        assertSame(5, (int) $rows[0]['hits']);
+    });
+});
+
+test('построитель: upsert обновляет только перечисленные колонки', function (): void {
+    withScratchTables(static function (Connection $db): void {
+        $db->table('test_pairs')->upsert(['pair_key' => 'a', 'value' => 'раз', 'hits' => 1], ['pair_key']);
+        $db->table('test_pairs')->upsert(['pair_key' => 'a', 'value' => 'два', 'hits' => 9], ['pair_key'], ['hits']);
+
+        $row = assertNotNull($db->selectOne('SELECT * FROM test_pairs WHERE pair_key = :k', ['k' => 'a']));
+
+        assertSame('раз', (string) $row['value'], 'value не в списке — не тронуто');
+        assertSame(9, (int) $row['hits']);
+
+        // Пустой список — «есть, так не трогать», и это не ошибка
+        $db->table('test_pairs')->upsert(['pair_key' => 'a', 'value' => 'три', 'hits' => 0], ['pair_key'], []);
+
+        assertSame('раз', (string) $db->value('SELECT value FROM test_pairs WHERE pair_key = :k', ['k' => 'a']));
+    });
+});
+
+test('построитель: upsert пачкой и мимо накопленных условий', function (): void {
+    withScratchTables(static function (Connection $db): void {
+        $db->table('test_pairs')->upsert(['pair_key' => 'a', 'value' => 'старое', 'hits' => 0], ['pair_key']);
+
+        // where() к вставке отношения не имеет и не должен ломать параметры
+        $db->table('test_pairs')->where('hits', '>', 100)->upsert([
+            ['pair_key' => 'a', 'value' => 'новое', 'hits' => 1],
+            ['pair_key' => 'b', 'value' => 'второе', 'hits' => 2],
+        ], ['pair_key']);
+
+        assertSame(
+            ['a' => 'новое', 'b' => 'второе'],
+            array_column($db->select('SELECT pair_key, value FROM test_pairs ORDER BY pair_key'), 'value', 'pair_key')
+        );
+    });
+});
+
+test('построитель: upsert отвергает ключ не из вставляемых колонок', function (): void {
+    $error = assertThrows(static fn () => Connection::instance()->table('test_pairs')->upsert(['value' => 'x'], ['pair_key']));
+
+    assertContains('ключа', $error->getMessage());
+
+    assertThrows(static fn () => Connection::instance()->table('test_pairs')->upsert([
+        ['pair_key' => 'a', 'value' => 'x'],
+        ['value' => 'y', 'pair_key' => 'b'],
+    ], ['pair_key']), 'разный порядок колонок в пачке');
+});
+
+test('построитель: whereDate сравнивает по дню и для dateTime, и для date', function (): void {
+    withScratchTables(static function (Connection $db): void {
+        foreach (['2026-10-28 23:59:59', '2026-10-29 00:00:00', '2026-10-29 12:30:00', '2026-10-29 23:59:59', '2026-10-30 00:00:00'] as $moment) {
+            $db->insert('test_events', ['happened_at' => $moment, 'happened_on' => substr($moment, 0, 10)]);
+        }
+
+        $count = static fn (string $column, string $operator, string|DateTimeInterface $date): int
+            => $db->table('test_events')->whereDate($column, $operator, $date)->count();
+
+        foreach (['happened_at', 'happened_on'] as $column) {
+            assertSame(3, $count($column, '=', '2026-10-29'), $column . ' =');
+            assertSame(2, $count($column, '<>', '2026-10-29'), $column . ' <>');
+            assertSame(1, $count($column, '<', '2026-10-29'), $column . ' <');
+            assertSame(4, $count($column, '<=', '2026-10-29'), $column . ' <=');
+            assertSame(1, $count($column, '>', '2026-10-29'), $column . ' >');
+            assertSame(4, $count($column, '>=', '2026-10-29'), $column . ' >=');
+        }
+
+        // Объект даты: время отбрасывается, считается только день
+        assertSame(3, $count('happened_at', '=', new DateTimeImmutable('2026-10-29 17:45:00')));
+    });
+});
+
+test('построитель: whereDate не принимает кривую дату и чужой оператор', function (): void {
+    $query = static fn () => Connection::instance()->table('settings');
+
+    assertThrows(static fn () => $query()->whereDate('updated_at', '=', '29.10.2026'));
+    assertThrows(static fn () => $query()->whereDate('updated_at', '=', '2026-02-30'), 'несуществующий день');
+    assertThrows(static fn () => $query()->whereDate('updated_at', 'LIKE', '2026-10-29'));
+});

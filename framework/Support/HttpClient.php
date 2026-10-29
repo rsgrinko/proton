@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Rsgrinko\Proton\Support;
 
+use Closure;
+
 /**
  * Запрос к чужому HTTP-сервису: почтовый сервис, вебхуки, любые интеграции.
  *
@@ -13,11 +15,18 @@ namespace Rsgrinko\Proton\Support;
  * разбирает вызывающий, исключение бросается только когда соединения не было
  * вовсе: «сервис ответил 500» и «сервис не ответил» — разные вещи.
  *
+ * Прокси — вторым аргументом, одной строкой:
+ *
+ *     new HttpClient(30, 'socks5://user:pass@10.0.0.5:1080');
+ *     new HttpClient(30, 'http://proxy.local:3128');
+ *
+ * SOCKS5 есть только у curl: без расширения такой клиент бросит исключение
+ * на первом запросе, а не уйдёт в сеть напрямую мимо прокси. Логин и пароль
+ * со спецсимволами кодируются как в адресе (`@` — `%40`).
+ *
  * Класс не закрыт от наследования нарочно: тесты, которым нужно подменить
- * саму реализацию (проверить, что ушло, разными кодами ответа подряд),
- * наследуются и переопределяют post()/get() — см. WebhookTestClient
- * в tests/WebhookTest.php. Когда достаточно заранее заданных ответов —
- * fake() проще и не требует своего класса:
+ * саму реализацию, наследуются и переопределяют post()/get() — см.
+ * WebhookTestClient в tests/WebhookTest.php. Обычно хватает fake():
  *
  *     HttpClient::fake(['*' => ['status' => 500, 'body' => 'упал']]);
  *
@@ -25,6 +34,15 @@ namespace Rsgrinko\Proton\Support;
  *
  *     assertSame($url, HttpClient::recorded()[0]['url']);
  *     HttpClient::reset();
+ *
+ * Заготовкой может быть и список ответов — они выдаются по очереди, последний
+ * повторяется (повторы после 500, опрос статуса до готовности), — и функция,
+ * которая собирает ответ по самому запросу:
+ *
+ *     HttpClient::fake([
+ *         'https://api.example.com/orders/*' => [['status' => 500], ['status' => 200, 'body' => '{}']],
+ *         'https://api.example.com/echo'     => fn (string $method, string $url, string $body) => ['body' => $body],
+ *     ]);
  *
  * Проверку сертификата не отключаем. Там, где у PHP нет хранилища корневых
  * сертификатов (обычная история на Windows), путь к cacert.pem задаётся
@@ -36,31 +54,90 @@ class HttpClient
     /**
      * Заготовленные ответы по маске адреса (fnmatch) — null, если подмены нет.
      *
-     * @var array<string, array{status?: int, body?: string}>|null
+     * @var array<string, array{status?: int, body?: string}|array<int, array{status?: int, body?: string}>|Closure>|null
      */
     private static ?array $fakeResponses = null;
+
+    /** @var array<string, int> Сколько ответов из списка по маске уже выдано */
+    private static array $fakeCursor = [];
 
     /**
      * Что успели отправить, пока подмена была включена.
      *
-     * @var array<int, array{method: string, url: string, body: string, headers: array<int, string>}>
+     * @var array<int, array{method: string, url: string, body: string, headers: array<int, string>, proxy: string}>
      */
     private static array $recorded = [];
 
-    public function __construct(private int $timeout = 10)
+    /** @var array{type: string, host: string, port: int, user: string, pass: string}|null Разобранный прокси */
+    private ?array $proxyParts = null;
+
+    public function __construct(private int $timeout = 10, private string $proxy = '')
     {
         $this->timeout = max(1, $this->timeout);
+        $this->proxy   = trim($this->proxy);
+
+        // Разбираем сразу: опечатка в адресе прокси должна всплыть при сборке
+        // клиента, а не тихо отправить запрос мимо прокси
+        if ($this->proxy !== '') {
+            $this->proxyParts = self::parseProxy($this->proxy);
+        }
+    }
+
+    /**
+     * Через какой прокси ходит клиент — пусто, если напрямую.
+     */
+    public function proxy(): string
+    {
+        return $this->proxy;
+    }
+
+    /**
+     * Разбирает адрес прокси. Годятся только http и socks5: у curl есть и
+     * другие типы, но потоки не умеют даже socks5, а разъезжаться по
+     * возможностям двум веткам клиента незачем.
+     *
+     * @return array{type: string, host: string, port: int, user: string, pass: string}
+     */
+    public static function parseProxy(string $proxy): array
+    {
+        $parts  = parse_url($proxy);
+        $scheme = strtolower((string) ($parts['scheme'] ?? ''));
+
+        if ($parts === false || !in_array($scheme, ['http', 'socks5'], true)) {
+            throw new ProtonException('Прокси задаётся адресом http://… или socks5://…', ['proxy' => self::maskProxy($proxy)]);
+        }
+
+        if (($parts['host'] ?? '') === '' || ($parts['port'] ?? 0) <= 0) {
+            throw new ProtonException('У прокси нужны и хост, и порт', ['proxy' => self::maskProxy($proxy)]);
+        }
+
+        return [
+            'type' => $scheme,
+            'host' => (string) $parts['host'],
+            'port' => (int) $parts['port'],
+            'user' => rawurldecode((string) ($parts['user'] ?? '')),
+            'pass' => rawurldecode((string) ($parts['pass'] ?? '')),
+        ];
+    }
+
+    /**
+     * Адрес прокси без пароля — для сообщений и логов.
+     */
+    public static function maskProxy(string $proxy): string
+    {
+        return (string) preg_replace('#(//[^:/@]*):[^@/]*@#', '$1:***@', $proxy);
     }
 
     /**
      * Включает подмену: любой request() отсюда отвечает заготовкой, в сеть
      * никто не ходит. Пустая маска `''` — заглушка на всё подряд.
      *
-     * @param array<string, array{status?: int, body?: string}> $responses
+     * @param array<string, array{status?: int, body?: string}|array<int, array{status?: int, body?: string}>|Closure> $responses
      */
     public static function fake(array $responses = []): void
     {
         self::$fakeResponses = $responses;
+        self::$fakeCursor    = [];
         self::$recorded      = [];
     }
 
@@ -71,13 +148,14 @@ class HttpClient
     public static function reset(): void
     {
         self::$fakeResponses = null;
+        self::$fakeCursor    = [];
         self::$recorded      = [];
     }
 
     /**
      * Что отправили, пока подмена была включена — самый свежий последним.
      *
-     * @return array<int, array{method: string, url: string, body: string, headers: array<int, string>}>
+     * @return array<int, array{method: string, url: string, body: string, headers: array<int, string>, proxy: string}>
      */
     public static function recorded(): array
     {
@@ -144,6 +222,10 @@ class HttpClient
             return $this->fakeRequest($method, $url, $body, $headers);
         }
 
+        if (($this->proxyParts['type'] ?? '') === 'socks5' && !function_exists('curl_init')) {
+            throw new ProtonException('SOCKS5-прокси работает только через curl, а расширения нет');
+        }
+
         $started = microtime(true);
 
         $response = function_exists('curl_init')
@@ -174,16 +256,38 @@ class HttpClient
      */
     private function fakeRequest(string $method, string $url, string $body, array $headers): array
     {
-        self::$recorded[] = ['method' => strtoupper($method), 'url' => $url, 'body' => $body, 'headers' => $headers];
+        $method = strtoupper($method);
+
+        self::$recorded[] = ['method' => $method, 'url' => $url, 'body' => $body, 'headers' => $headers, 'proxy' => $this->proxy];
 
         foreach (self::$fakeResponses as $pattern => $response) {
-            if ($pattern === '' || $pattern === '*' || fnmatch($pattern, $url)) {
-                return [
-                    'status'   => (int) ($response['status'] ?? 200),
-                    'body'     => (string) ($response['body'] ?? ''),
-                    'duration' => 0,
-                ];
+            $pattern = (string) $pattern;
+
+            if ($pattern !== '' && $pattern !== '*' && !fnmatch($pattern, $url)) {
+                continue;
             }
+
+            if ($response instanceof Closure) {
+                $response = $response($method, $url, $body, $headers);
+            } elseif ($response !== [] && array_is_list($response)) {
+                // Список: по ответу на запрос, последний повторяется — опрос
+                // «пока не готово» не должен упираться в конец заготовки
+                $index = self::$fakeCursor[$pattern] ?? 0;
+
+                self::$fakeCursor[$pattern] = $index + 1;
+
+                $response = $response[min($index, count($response) - 1)];
+            }
+
+            if (!is_array($response)) {
+                throw new ProtonException('Заготовка ответа для «' . $pattern . '» — не массив');
+            }
+
+            return [
+                'status'   => (int) ($response['status'] ?? 200),
+                'body'     => (string) ($response['body'] ?? ''),
+                'duration' => 0,
+            ];
         }
 
         // Маска не нашлась — заготовки не спрашивали именно про этот адрес,
@@ -219,6 +323,19 @@ class HttpClient
             curl_setopt($curl, CURLOPT_POSTFIELDS, $body);
         }
 
+        if ($this->proxyParts !== null) {
+            curl_setopt_array($curl, [
+                CURLOPT_PROXY     => $this->proxyParts['host'] . ':' . $this->proxyParts['port'],
+                // SOCKS5_HOSTNAME: имя сервиса резолвит прокси, а не мы — там,
+                // где сервис заблокирован, обычно подменён и его DNS
+                CURLOPT_PROXYTYPE => $this->proxyParts['type'] === 'socks5' ? CURLPROXY_SOCKS5_HOSTNAME : CURLPROXY_HTTP,
+            ]);
+
+            if ($this->proxyParts['user'] !== '') {
+                curl_setopt($curl, CURLOPT_PROXYUSERPWD, $this->proxyParts['user'] . ':' . $this->proxyParts['pass']);
+            }
+        }
+
         $ca = self::caBundle();
 
         if ($ca !== '') {
@@ -249,6 +366,14 @@ class HttpClient
      */
     private function viaStreams(string $method, string $url, string $body, array $headers): array
     {
+        if ($this->proxyParts !== null) {
+            // Сюда доходит только http-прокси: socks5 без curl отсечён в request()
+            if ($this->proxyParts['user'] !== '') {
+                $headers[] = 'Proxy-Authorization: Basic '
+                    . base64_encode($this->proxyParts['user'] . ':' . $this->proxyParts['pass']);
+            }
+        }
+
         $options = [
             'http' => [
                 'method'          => strtoupper($method),
@@ -260,6 +385,14 @@ class HttpClient
                 'ignore_errors'   => true,
             ],
         ];
+
+        if ($this->proxyParts !== null) {
+            $options['http']['proxy'] = 'tcp://' . $this->proxyParts['host'] . ':' . $this->proxyParts['port'];
+
+            // Полный адрес в строке запроса нужен прокси только для http:
+            // https идёт туннелем через CONNECT, и внутри него — обычный путь
+            $options['http']['request_fulluri'] = strtolower((string) parse_url($url, PHP_URL_SCHEME)) === 'http';
+        }
 
         $ca = self::caBundle();
 

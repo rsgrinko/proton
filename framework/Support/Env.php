@@ -116,6 +116,21 @@ final class Env
         return $value === null ? $default : (int) $value;
     }
 
+    /**
+     * Дробное число. Запятая годится наравне с точкой: «0,7» в `.env` пишут
+     * не реже, чем «0.7», и молча превращать его в ноль нельзя.
+     */
+    public static function float(string $key, float $default = 0.0): float
+    {
+        $value = self::get($key, null);
+
+        if ($value === null || trim((string) $value) === '') {
+            return $default;
+        }
+
+        return (float) str_replace(',', '.', trim((string) $value));
+    }
+
     public static function bool(string $key, bool $default = false): bool
     {
         $value = self::get($key, null);

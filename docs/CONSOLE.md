@@ -35,7 +35,7 @@ php bin/proton status        # самопроверка: окружение, б�
 | `tinker [--execute=код]` | интерактивная консоль с доступом к моделям и конфигу |
 
 **Очередь и расписание**: `worker [--once] [--queue=]`, `worker:restart`,
-`schedule:run [--list]`, `queue:status [--failed]`, `queue:retry <id\|--failed>`,
+`daemon:stop <имя>` (см. «Демон» ниже), `schedule:run [--list]`, `queue:status [--failed]`, `queue:retry <id\|--failed>`,
 `queue:purge [--days=]` — подробности в [QUEUE.md](QUEUE.md).
 
 **Пользователи и доступ**: `user:create`, `user:list`, `user:password`, `user:delete`,
@@ -183,6 +183,67 @@ final class ImportOrdersCommand extends Command
 
 `ask()` и `confirm()` не вешают команду в cron: без терминала они берут значение
 по умолчанию, а `confirm()` без `--force` отвечает «нет».
+
+Зависимости команда просит в конструкторе — их подставит контейнер. `parent::__construct()`
+обязателен: там настраивается вывод.
+
+```php
+public function __construct(private readonly OrdersImporter $importer)
+{
+    parent::__construct();
+}
+```
+
+Собирается только та команда, которую запустили. Справка и поиск по имени создают
+остальные без конструктора (`Application::describe()`), поэтому `name()`, `usage()`
+и `description()` должны возвращать строку, не трогая зависимости.
+
+## Демон
+
+То, что не ложится в очередь — длинный опрос чужого API, слушатель сокета, — пишется
+наследником `DaemonCommand`. Вместо `run()` — `tick()`, один круг работы:
+
+```php
+final class InboxPollCommand extends DaemonCommand
+{
+    public function name(): string { return 'inbox:poll'; }
+    public function description(): string { return 'Забирает входящие длинным опросом'; }
+
+    protected function interval(): int { return 0; }   // пауза между кругами: опрос ждёт сам
+
+    protected function tick(): void
+    {
+        // один запрос с ожиданием и разбор ответа
+    }
+}
+```
+
+Остальное берёт базовый класс:
+
+- **один экземпляр** на имя — второй запуск выходит с кодом 1 (`Database\Lock`);
+- **остановка по-хорошему**, круг дорабатывается: SIGTERM/SIGINT, где есть pcntl
+  (Linux, `systemctl stop`), Ctrl+C на Windows (`sapi_windows_set_ctrl_handler`),
+  и на обеих — `php bin/proton daemon:stop inbox:poll`. Последний способ — флаг
+  в `var/daemon`, им останавливают и фоновый процесс на Windows, где сигнал не послать.
+  Старый флаг новый экземпляр не останавливает;
+- **перезапуск** раз в `lifetime()` секунд (по умолчанию час) — процесс выходит,
+  systemd поднимает новый с `Restart=always`: память не копится, код свежий;
+- **свежие настройки** — `Settings::refresh()` перед каждым кругом;
+- **упавший круг** уходит в лог (канал `daemon`), следующий — после `errorPause()`.
+
+Долгий `tick()` может проверять `$this->stopping()` между шагами, а `$this->stop()`
+из него просит выйти после круга. `--once` — один круг и выход, для cron и ручной
+проверки.
+
+```ini
+# /etc/systemd/system/inbox-poll.service
+[Service]
+User=www-data
+WorkingDirectory=/var/www/app
+ExecStart=/usr/bin/php bin/proton inbox:poll
+Restart=always
+RestartSec=5
+```
 
 ## Тесты на команды
 
