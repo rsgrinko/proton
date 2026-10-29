@@ -49,6 +49,9 @@ $GLOBALS['test_options'] = $options;
 
 // Своё у прогона не только подключение: логи и временные файлы тоже, иначе
 // тесты, которые нарочно роняют базу, подмешивают свои ошибки в рабочий журнал
+// Окружение — testing: приложение по нему отключает то, чему в тестах не место
+// (своё расписание с задачами в очередь, отправку наружу)
+Config::set('app.env', 'testing');
 Config::set('log.level', 'error');
 Config::set('paths.log', APP_ROOT . '/var/log/tests');
 Config::set('paths.cache', APP_ROOT . '/var/tmp/cache-tests');
