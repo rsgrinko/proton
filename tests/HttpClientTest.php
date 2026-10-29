@@ -221,3 +221,112 @@ test('HttpClient: запрос уходит через socks5, имя хоста
     assertSame(8080, $result['report']['target_port'] ?? 0);
     assertSame('GET /ping HTTP/1.1', $result['report']['request_line'] ?? '');
 });
+
+test('HttpClient: свой файл корневых сертификатов — нет файла, нет клиента', function (): void {
+    $ca = APP_ROOT . '/tests/support/tls/ca.pem';
+
+    assertSame($ca, (new HttpClient(5, '', $ca))->caFile());
+
+    withConfig(['http.ca_bundle' => ''], static function (): void {
+        assertSame('', (new HttpClient())->caFile(), 'без своего — общий набор, а его нет');
+    });
+
+    assertThrows(static fn () => new HttpClient(5, '', APP_ROOT . '/tests/support/tls/нет-такого.pem'));
+
+    HttpClient::fake();
+
+    try {
+        (new HttpClient(5, '', $ca))->get('https://bank.example.com/');
+
+        assertSame($ca, HttpClient::recorded()[0]['ca_bundle']);
+    } finally {
+        HttpClient::reset();
+    }
+});
+
+/**
+ * Поднимает tests/support/fake_https_server.php и отдаёт его порт.
+ *
+ * @return array{process: resource, pipes: array<int, resource>, port: int, portFile: string}
+ */
+function startFakeHttps(int $connections): array
+{
+    $portFile = APP_ROOT . '/var/tmp/https-test-port-' . bin2hex(random_bytes(4)) . '.txt';
+
+    $process = proc_open(
+        ['php', APP_ROOT . '/tests/support/fake_https_server.php', $portFile, (string) $connections],
+        [1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
+        $pipes
+    );
+
+    $deadline = microtime(true) + 10;
+
+    while (!is_file($portFile) && microtime(true) < $deadline) {
+        usleep(10000);
+    }
+
+    return ['process' => $process, 'pipes' => $pipes, 'port' => (int) trim((string) @file_get_contents($portFile)), 'portFile' => $portFile];
+}
+
+/**
+ * @param array{process: resource, pipes: array<int, resource>, port: int, portFile: string} $server
+ */
+function stopFakeHttps(array $server): void
+{
+    foreach ($server['pipes'] as $pipe) {
+        @fclose($pipe);
+    }
+
+    @proc_terminate($server['process']);
+    @proc_close($server['process']);
+    @unlink($server['portFile']);
+}
+
+test('HttpClient: сервер со своим УЦ проверяется по своему файлу, без него — отказ', function (): void {
+    if (!function_exists('curl_init')) {
+        skipTest('нет curl');
+    }
+
+    $server = startFakeHttps(2);
+    $url    = 'https://127.0.0.1:' . $server['port'] . '/';
+
+    try {
+        // Проверку сертификата включаем явно: в .env разработки её бывает выключают
+        withConfig(['http.verify_peer' => true, 'http.ca_bundle' => ''], static function () use ($url): void {
+            $response = (new HttpClient(5, '', APP_ROOT . '/tests/support/tls/ca.pem'))->get($url);
+
+            assertSame(200, $response['status']);
+            assertSame('защищённо', $response['body']);
+
+            // Тот же сервер без своего файла: тестового УЦ нет ни в общем
+            // наборе, ни в системе — проверка сертификата не проходит
+            $error = assertThrows(static fn () => (new HttpClient(5))->get($url));
+
+            assertContains('Сервис недоступен', $error->getMessage());
+        });
+    } finally {
+        stopFakeHttps($server);
+    }
+});
+
+test('HttpClient: свой файл корневых сертификатов работает и без curl', function (): void {
+    $server = startFakeHttps(2);
+    $url    = 'https://127.0.0.1:' . $server['port'] . '/';
+
+    // Ветка потоков — та, что работает без расширения curl
+    $viaStreams = static fn (HttpClient $client): array
+        => (new ReflectionMethod($client, 'viaStreams'))->invoke($client, 'GET', $url, '', []);
+
+    try {
+        withConfig(['http.verify_peer' => true, 'http.ca_bundle' => ''], static function () use ($viaStreams): void {
+            $response = $viaStreams(new HttpClient(5, '', APP_ROOT . '/tests/support/tls/ca.pem'));
+
+            assertSame(200, $response['status']);
+            assertSame('защищённо', $response['body']);
+
+            assertThrows(static fn () => $viaStreams(new HttpClient(5)), 'без своего файла сервер не проверится');
+        });
+    } finally {
+        stopFakeHttps($server);
+    }
+});

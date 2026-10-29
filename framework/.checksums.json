@@ -172,7 +172,7 @@
     "framework/Support/Exports.php": "a3431e65b8041575aabf51ca2ce0ab35508d55c59cb67ead3de97ca0240729f6",
     "framework/Support/Filter.php": "d0e64d46147cb664ee45f9e74d82af19b5e936ed3a69ad4d24f792f524e178d8",
     "framework/Support/Filters.php": "d706838b31dca302609e17906c6add2d0ac0231cbe2aadcc567d4da297bfdeb0",
-    "framework/Support/HttpClient.php": "761c504b902e3ddcd24578af0a53625dcf478e284312e62edcadeaeeab0e3c02",
+    "framework/Support/HttpClient.php": "b582fb5603142a18858f0c00240e69e4579824f29d740c7ad0302b813413ae3b",
     "framework/Support/Import.php": "56d7d0cd17d15220b4a9e0762aafda326f583427e8a74fc1f7baf7a9d99b5be6",
     "framework/Support/ImportPlan.php": "990edf2878958010c35ff419b52ae62230b15a7c4501fa66836082bbc735fc68",
     "framework/Support/ImportReport.php": "9b2e3712b2be7ac3a10a5147dd8d4456117451c14edb85eb476f3773f7a4a374",

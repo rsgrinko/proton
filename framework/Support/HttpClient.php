@@ -48,6 +48,16 @@ use Closure;
  * сертификатов (обычная история на Windows), путь к cacert.pem задаётся
  * настройкой HTTP_CA_BUNDLE — иначе любой https-запрос падает на «unable to
  * get local issuer certificate».
+ *
+ * Сервису со своим удостоверяющим центром, которого нет в общих наборах
+ * (корень Минцифры у российских банков, внутренний УЦ компании), корневой
+ * сертификат передаётся третьим аргументом — файлом из самого проекта:
+ *
+ *     new HttpClient(30, '', APP_ROOT . '/resources/certs/russian_trusted_root_ca.pem');
+ *
+ * Тогда этот клиент проверяет сервер только по нему, а HTTP_CA_BUNDLE
+ * и системное хранилище не участвуют: ставить сертификат в ОС каждого сервера
+ * не нужно, и он не начинает подтверждать чужие сайты для остального кода.
  */
 class HttpClient
 {
@@ -64,17 +74,24 @@ class HttpClient
     /**
      * Что успели отправить, пока подмена была включена.
      *
-     * @var array<int, array{method: string, url: string, body: string, headers: array<int, string>, proxy: string}>
+     * @var array<int, array{method: string, url: string, body: string, headers: array<int, string>, proxy: string, ca_bundle: string}>
      */
     private static array $recorded = [];
 
     /** @var array{type: string, host: string, port: int, user: string, pass: string}|null Разобранный прокси */
     private ?array $proxyParts = null;
 
-    public function __construct(private int $timeout = 10, private string $proxy = '')
+    public function __construct(private int $timeout = 10, private string $proxy = '', private string $caBundle = '')
     {
-        $this->timeout = max(1, $this->timeout);
-        $this->proxy   = trim($this->proxy);
+        $this->timeout  = max(1, $this->timeout);
+        $this->proxy    = trim($this->proxy);
+        $this->caBundle = trim($this->caBundle);
+
+        // Нет файла — ошибка сразу: молча откатиться на общий набор значило бы
+        // либо не достучаться до сервиса, либо проверять его не тем, что просили
+        if ($this->caBundle !== '' && !is_file($this->caBundle)) {
+            throw new ProtonException('Нет файла корневых сертификатов: ' . $this->caBundle);
+        }
 
         // Разбираем сразу: опечатка в адресе прокси должна всплыть при сборке
         // клиента, а не тихо отправить запрос мимо прокси
@@ -89,6 +106,15 @@ class HttpClient
     public function proxy(): string
     {
         return $this->proxy;
+    }
+
+    /**
+     * По каким корневым сертификатам проверяется сервер: свой файл клиента,
+     * иначе общий HTTP_CA_BUNDLE, иначе пусто — хранилище самого PHP.
+     */
+    public function caFile(): string
+    {
+        return $this->caBundle !== '' ? $this->caBundle : self::caBundle();
     }
 
     /**
@@ -258,7 +284,7 @@ class HttpClient
     {
         $method = strtoupper($method);
 
-        self::$recorded[] = ['method' => $method, 'url' => $url, 'body' => $body, 'headers' => $headers, 'proxy' => $this->proxy];
+        self::$recorded[] = ['method' => $method, 'url' => $url, 'body' => $body, 'headers' => $headers, 'proxy' => $this->proxy, 'ca_bundle' => $this->caBundle];
 
         foreach (self::$fakeResponses as $pattern => $response) {
             $pattern = (string) $pattern;
@@ -336,7 +362,7 @@ class HttpClient
             }
         }
 
-        $ca = self::caBundle();
+        $ca = $this->caFile();
 
         if ($ca !== '') {
             curl_setopt($curl, CURLOPT_CAINFO, $ca);
@@ -394,7 +420,7 @@ class HttpClient
             $options['http']['request_fulluri'] = strtolower((string) parse_url($url, PHP_URL_SCHEME)) === 'http';
         }
 
-        $ca = self::caBundle();
+        $ca = $this->caFile();
 
         if ($ca !== '') {
             $options['ssl']['cafile'] = $ca;
