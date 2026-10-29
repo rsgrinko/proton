@@ -325,6 +325,13 @@ final class Container
             /** @var array{bind?: array<string, Closure|string>, singleton?: array<string, Closure|string>} $services */
             $services = (array) require $file;
 
+            // Положенное через set() до первого обращения (тест подставил
+            // подделку) важнее реестра: bind() сбросил бы готовый объект,
+            // и в тест вместо подделки приехала бы настоящая реализация
+            foreach (['bind', 'singleton'] as $kind) {
+                $services[$kind] = array_diff_key((array) ($services[$kind] ?? []), $this->shared);
+            }
+
             $this->register($services);
         }
     }

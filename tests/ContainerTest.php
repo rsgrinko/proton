@@ -130,3 +130,15 @@ test('контейнер: реестр services.php разбирается', fun
     assertSame('локальное', $container->make(ContainerTestStorage::class)->name());
     assertTrue($container->make(Logger::class) === $container->make(Logger::class));
 });
+
+test('контейнер: set() до первого обращения не затирается реестром services.php', function (): void {
+    $container = new Container();
+    $fake      = new ContainerTestLocal();
+
+    // В config/services.php NoteLimiter привязан к ConfigNoteLimiter; привязки
+    // читаются лениво — уже после этого set()
+    $container->set(App\Contracts\NoteLimiter::class, $fake);
+
+    assertSame($fake, $container->make(App\Contracts\NoteLimiter::class));
+    assertTrue($container->make(App\Services\ConfigNoteLimiter::class) instanceof App\Services\ConfigNoteLimiter, 'остальной реестр на месте');
+});
